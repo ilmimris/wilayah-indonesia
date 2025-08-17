@@ -1,10 +1,10 @@
 # Multi-stage Dockerfile for Indonesian Regions Fuzzy Search API
 
 # Stage 1: Builder
-FROM golang:1.24-alpine AS builder
+FROM golang:1.24 AS builder
 
 # Install build tools
-RUN apk add --no-cache build-base
+RUN apt-get update && apt-get install -y build-essential
 
 # Set working directory
 WORKDIR /app
