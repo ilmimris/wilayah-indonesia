@@ -68,6 +68,78 @@ curl "http://localhost:8080/v1/search?q=bandung"
 ]
 ```
 
+### Specific Search Endpoints
+
+In addition to the general search endpoint, the API provides specific search endpoints for each administrative level:
+
+- **District Search**: `/v1/search/district?q={query}`
+- **Subdistrict Search**: `/v1/search/subdistrict?q={query}`
+- **City Search**: `/v1/search/city?q={query}`
+- **Province Search**: `/v1/search/province?q={query}`
+
+Each specific search endpoint:
+- Takes a required `q` query parameter containing the search term
+- Returns a JSON array of matching regions at that administrative level
+- Uses the Jaro-Winkler similarity algorithm for fuzzy matching with a threshold of 0.8
+- Limits results to 10 items
+- Returns the same Region structure as the general search endpoint
+
+#### District Search Endpoint
+
+```
+GET /v1/search/district?q={query}
+```
+
+**Parameters:**
+- `q` (required): Search query string (e.g., "bandung")
+
+**Example Request:**
+```bash
+curl "http://localhost:8080/v1/search/district?q=bandung"
+```
+
+#### Subdistrict Search Endpoint
+
+```
+GET /v1/search/subdistrict?q={query}
+```
+
+**Parameters:**
+- `q` (required): Search query string (e.g., "sukasari")
+
+**Example Request:**
+```bash
+curl "http://localhost:8080/v1/search/subdistrict?q=sukasari"
+```
+
+#### City Search Endpoint
+
+```
+GET /v1/search/city?q={query}
+```
+
+**Parameters:**
+- `q` (required): Search query string (e.g., "bandung")
+
+**Example Request:**
+```bash
+curl "http://localhost:8080/v1/search/city?q=bandung"
+```
+
+#### Province Search Endpoint
+
+```
+GET /v1/search/province?q={query}
+```
+
+**Parameters:**
+- `q` (required): Search query string (e.g., "jawa")
+
+**Example Request:**
+```bash
+curl "http://localhost:8080/v1/search/province?q=jawa"
+```
+
 ### Health Check Endpoint
 
 ```
