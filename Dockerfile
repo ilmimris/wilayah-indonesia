@@ -3,6 +3,9 @@
 # Stage 1: Builder
 FROM golang:1.24-alpine AS builder
 
+# Install build tools
+RUN apk add --no-cache build-base
+
 # Set working directory
 WORKDIR /app
 
