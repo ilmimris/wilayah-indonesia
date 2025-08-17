@@ -20,6 +20,7 @@ A high-performance, dependency-free Go API for fuzzy searching Indonesian admini
 - [Maintenance](#maintenance)
   - [Updating Administrative Data](#updating-administrative-data)
 - [Makefile Commands](#makefile-commands)
+- [Acknowledgements](#acknowledgements)
 - [Project Structure](#project-structure)
 
 ## Features
@@ -327,6 +328,10 @@ This process will:
 | `make clean` | Clean build artifacts |
 | `make deps` | Install dependencies |
 | `make help` | Show help message |
+
+## Acknowledgements
+
+We would like to express our gratitude to [cahyadsn](https://github.com/cahyadsn) for contributing the Indonesian administrative regions data that powers this API. The data is sourced from the [wilayah](https://github.com/cahyadsn/wilayah) repository, which provides comprehensive and up-to-date information about Indonesian provinces, cities, districts, and subdistricts.
 
 ## Project Structure
 
