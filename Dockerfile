@@ -18,14 +18,14 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binary
-RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o regions-api ./cmd/api
+# Build the binary as a fully static executable
+RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-w -s -extldflags '-static'" -a -o regions-api ./cmd/api
 
 # Stage 2: Final
 FROM gcr.io/distroless/static-debian11
 
 # Set working directory
-WORKDIR /
+WORKDIR /app
 
 # Copy the binary from builder stage
 COPY --from=builder /app/regions-api .
@@ -37,4 +37,4 @@ COPY --from=builder /app/data/regions.duckdb ./data/regions.duckdb
 EXPOSE 8080
 
 # Command to run the application
-CMD ["./regions-api"]
+CMD ["/app/regions-api"]
