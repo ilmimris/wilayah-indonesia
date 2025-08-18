@@ -40,23 +40,43 @@ func main() {
 		log.Fatal("Failed to execute SQL:", err)
 	}
 
+	// Read and execute the postal code data
+	kodeposPath := filepath.Join("data", "wilayah_kodepos.sql")
+	kodeposData, err := os.ReadFile(kodeposPath)
+	if err != nil {
+		log.Fatal("Failed to read postal code SQL file:", err)
+	}
+
+	// Preprocess the postal code SQL to make it compatible with DuckDB
+	kodeposString := string(kodeposData)
+	kodeposString = removeMySQLSyntax(kodeposString)
+
+	// Execute the postal code SQL to create and populate the wilayah_kodepos table
+	_, err = db.Exec(kodeposString)
+	if err != nil {
+		log.Fatal("Failed to execute postal code SQL:", err)
+	}
+
 	// Execute the transformation query to denormalize the data and create the final regions table
+	// Using LEFT JOIN to maintain backward compatibility - postal code will be NULL if not available
 	transformationQuery := `
 CREATE OR REPLACE TABLE regions AS
 SELECT
-    sub.kode AS id,
-    sub.nama AS subdistrict,
-    dist.nama AS district,
-    city.nama AS city,
-    prov.nama AS province,
-    LOWER(prov.nama || ' ' || city.nama || ' ' || dist.nama || ' ' || sub.nama) AS full_text
+	   sub.kode AS id,
+	   sub.nama AS subdistrict,
+	   dist.nama AS district,
+	   city.nama AS city,
+	   prov.nama AS province,
+	   kodepos.kodepos AS postal_code,
+	   LOWER(prov.nama || ' ' || city.nama || ' ' || dist.nama || ' ' || sub.nama) AS full_text
 FROM
-    wilayah AS sub
+	   wilayah AS sub
 JOIN wilayah AS dist ON dist.kode = SUBSTRING(sub.kode FROM 1 FOR 8)
 JOIN wilayah AS city ON city.kode = SUBSTRING(sub.kode FROM 1 FOR 5)
 JOIN wilayah AS prov ON prov.kode = SUBSTRING(sub.kode FROM 1 FOR 2)
+LEFT JOIN wilayah_kodepos AS kodepos ON kodepos.kode = sub.kode
 WHERE
-    LENGTH(sub.kode) = 13;
+	   LENGTH(sub.kode) = 13;
 `
 
 	_, err = db.Exec(transformationQuery)
@@ -70,7 +90,13 @@ WHERE
 		log.Fatal("Failed to drop wilayah table:", err)
 	}
 
-	fmt.Println("Data ingestion and preparation completed successfully!")
+	// Clean up by dropping the wilayah_kodepos table
+	_, err = db.Exec("DROP TABLE IF EXISTS wilayah_kodepos;")
+	if err != nil {
+		log.Fatal("Failed to drop wilayah_kodepos table:", err)
+	}
+
+	fmt.Println("Data ingestion and preparation completed successfully with postal codes!")
 }
 
 // removeMySQLSyntax removes MySQL-specific syntax to make the SQL compatible with DuckDB

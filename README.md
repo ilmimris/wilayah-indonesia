@@ -140,6 +140,43 @@ GET /v1/search/province?q={query}
 ```bash
 curl "http://localhost:8080/v1/search/province?q=jawa"
 ```
+#### Postal Code Search Endpoint
+
+```
+GET /v1/search/postal/{postalCode}
+```
+
+**Parameters:**
+- `postalCode` (required): 5-digit postal code (e.g., "10110")
+
+**Example Request:**
+```bash
+curl "http://localhost:8080/v1/search/postal/10110"
+```
+
+**Example Response:**
+```json
+[
+  {
+    "id": "3101010001",
+    "subdistrict": "Kepulauan Seribu Utara",
+    "district": "Kepulauan Seribu Utara",
+    "city": "Kabupaten Kepulauan Seribu",
+    "province": "DKI Jakarta",
+    "postal_code": "10110",
+    "full_text": "dki jakarta kabupaten kepulauan seribu kepulauan seribu utara kepulauan seribu utara"
+  }
+]
+```
+
+The postal code search endpoint:
+- Takes a required `postalCode` path parameter containing a 5-digit postal code
+- Returns a JSON array of matching regions with that postal code
+- Performs an exact match on the postal code
+- Limits results to 10 items
+- Returns the same Region structure as other search endpoints
+- Returns a 404 error if no regions are found for the provided postal code
+- Returns a 400 error if the postal code is not a valid 5-digit number
 
 ### Health Check Endpoint
 

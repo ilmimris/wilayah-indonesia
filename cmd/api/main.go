@@ -54,6 +54,8 @@ func main() {
 
 	// Define the province search endpoint
 	app.Get("/v1/search/province", api.ProvinceSearchHandler(db))
+	// Define the postal code search endpoint
+	app.Get("/v1/search/postal/:postalCode", api.PostalCodeSearchHandler(db))
 
 	// Add health check endpoint
 	app.Get("/healthz", func(c *fiber.Ctx) error {
