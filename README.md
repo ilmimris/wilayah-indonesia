@@ -25,7 +25,7 @@ A high-performance, dependency-free Go API for fuzzy searching Indonesian admini
 
 ## Features
 
-- **Fuzzy Search**: Uses Levenshtein distance algorithm for typo-tolerant searches
+- **Fuzzy Search**: Uses the Jaro-Winkler similarity algorithm for typo-tolerant searches with a threshold of 0.8 (80% similarity)
 - **High Performance**: Powered by DuckDB for fast querying of Indonesian administrative data
 - **Lightweight**: Minimal dependencies with GoFiber web framework
 - **Container Ready**: Dockerized application for easy deployment
@@ -81,11 +81,25 @@ In addition to the general search endpoint, the API provides specific search end
 Each specific search endpoint:
 - Takes a required `q` query parameter containing the search term
 - Returns a JSON array of matching regions at that administrative level
-- Uses the Jaro-Winkler similarity algorithm for fuzzy matching with a threshold of 0.8
-- Limits results to 10 items
+- Uses the Jaro-Winkler similarity algorithm for fuzzy matching with a threshold of 0.8 (80% similarity)
+- Orders results by similarity score in descending order (most similar first)
+- Limits results to 10 items per search
 - Returns the same Region structure as the general search endpoint
 
 #### District Search Endpoint
+
+Each specific search endpoint utilizes DuckDB's built-in `jaro_winkler_similarity` function to provide fuzzy matching capabilities:
+
+- **District Search** (`/v1/search/district?q={query}`): Compares the search query directly against the district names
+- **Subdistrict Search** (`/v1/search/subdistrict?q={query}`): Compares the search query directly against the subdistrict names
+- **Province Search** (`/v1/search/province?q={query}`): Compares the search query directly against the province names
+- **City Search** (`/v1/search/city?q={query}`): Compares the search query against both "Kota " + query and "Kabupaten " + query to match both city and regency names
+
+The Jaro-Winkler similarity algorithm is particularly effective for this use case because:
+- It gives more favorable ratings to strings that match from the beginning, which is ideal for geographical names
+- The 0.8 threshold ensures that only highly similar matches are returned (80% similarity or higher)
+- Results are ordered by similarity score in descending order, with the most similar matches appearing first
+- Each endpoint is limited to returning a maximum of 10 results to ensure fast response times
 
 ```
 GET /v1/search/district?q={query}
