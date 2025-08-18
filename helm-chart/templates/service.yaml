@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "wilayah-indonesia.fullname" . }}
+  labels:
+    helm.sh/chart: {{ include "wilayah-indonesia.chart" . }}
+    app.kubernetes.io/name: {{ include "wilayah-indonesia.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "wilayah-indonesia.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}

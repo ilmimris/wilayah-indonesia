@@ -1,0 +1,145 @@
+# Default values for wilayah-indonesia.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Number of API server replicas to deploy
+replicaCount: 1
+
+# Container image configuration
+image:
+  # Container image repository
+  repository: ghcr.io/ilmimris/wilayah-indonesia
+  # Container image tag, defaults to chart appVersion if not specified
+  tag: "main"
+  # Image pull policy
+  pullPolicy: IfNotPresent
+
+# Image pull secrets for private registries
+imagePullSecrets: []
+# Override chart name
+nameOverride: ""
+# Override full name
+fullnameOverride: ""
+
+# Service account configuration
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod security context
+podSecurityContext:
+  # fsGroup: 2000
+
+# Container security context
+securityContext:
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+# Service configuration
+service:
+  # Service type (ClusterIP, NodePort, LoadBalancer)
+  type: ClusterIP
+  # Service port
+  port: 8080
+  # Target port on the container (if different from service port)
+  targetPort: 8080
+  # Service annotations
+  annotations: {}
+
+# Ingress configuration
+ingress:
+  # Enable or disable ingress
+  enabled: false
+  # Ingress class name
+  className: ""
+  # Ingress annotations
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  # Ingress hosts configuration
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  # TLS configuration for ingress
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+# Resource limits and requests
+resources:
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, adjust them as necessary.
+  limits:
+    # CPU limit for the container
+    cpu: 100m
+    # Memory limit for the container
+    memory: 256Mi
+  requests:
+    # CPU request for the container
+    cpu: 50m
+    # Memory request for the container
+    memory: 128Mi
+
+# Horizontal pod autoscaling configuration
+autoscaling:
+  # Enable or disable horizontal pod autoscaling
+  enabled: true
+  # Minimum number of replicas
+  minReplicas: 1
+  # Maximum number of replicas
+  maxReplicas: 10
+  # Target CPU utilization percentage
+  targetCPUUtilizationPercentage: 60
+  # Target memory utilization percentage (optional)
+  targetMemoryUtilizationPercentage: 60
+
+# Node selection constraints
+nodeSelector: {}
+
+# Tolerations for node taints
+tolerations: []
+
+# Pod affinity/anti-affinity rules
+affinity: {}
+
+# Environment variables configuration
+env:
+  # Port on which the application listens
+  PORT: "8080"
+  # Path to the database file
+  DB_PATH: "/app/data/regions.duckdb"
+
+# Network policy configuration
+networkPolicy:
+  # Enable or disable network policy
+  enabled: false
+  # Annotations to add to the network policy
+  annotations: {}
+  # Ingress configuration
+  ingress:
+    # Enable or disable ingress rules
+    enabled: true
+    # CIDR block to allow ingress from (optional)
+    cidr: ""
+    # Namespace labels to allow ingress from (optional)
+    namespaces: {}
+  # Egress configuration
+  egress:
+    # Enable or disable egress rules
+    enabled: true

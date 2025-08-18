@@ -1,0 +1,69 @@
+Thank you for installing the Indonesian Regions Fuzzy Search API Helm chart!
+
+Your release is named {{ .Release.Name }}.
+
+## Accessing the Service
+
+To access the service from within your cluster:
+
+{{- if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "wilayah-indonesia.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo "Visit http://$NODE_IP:$NODE_PORT to use your application"
+{{- else if contains "LoadBalancer" .Values.service.type }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+        Watch the status with: 'kubectl get svc --namespace {{ .Release.Namespace }} -w {{ include "wilayah-indonesia.fullname" . }}'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "wilayah-indonesia.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{end}}"}}")
+  echo "Visit http://$SERVICE_IP:{{ .Values.service.port }} to use your application"
+{{- else if contains "ClusterIP" .Values.service.type }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "wilayah-indonesia.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:$CONTAINER_PORT
+{{- end }}
+
+## Useful Commands for Checking Deployment Status
+
+Check the status of your deployment:
+  kubectl get deployments --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "wilayah-indonesia.name" . }},app.kubernetes.io/instance={{ .Release.Name }}"
+
+Check the status of your pods:
+  kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "wilayah-indonesia.name" . }},app.kubernetes.io/instance={{ .Release.Name }}"
+
+View the logs of your application:
+  kubectl logs --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "wilayah-indonesia.name" . }},app.kubernetes.io/instance={{ .Release.Name }}"
+
+Describe the service for troubleshooting:
+  kubectl describe services {{ include "wilayah-indonesia.fullname" . }} --namespace {{ .Release.Namespace }}
+
+{{- if .Values.ingress.enabled }}
+Access the application via Ingress at:
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
+## Example API Usage
+
+Once the service is running, you can test it with:
+
+  curl http://<service-address>/v1/search?q=bandung
+
+This will return a JSON array of matching Indonesian regions.
+
+## Documentation
+
+For more information about the Indonesian Regions Fuzzy Search API, please visit:
+- Main documentation: https://github.com/ilmimris/wilayah-indonesia
+- Helm chart documentation: https://github.com/ilmimris/wilayah-indonesia/tree/main/helm-chart
+- API documentation: https://github.com/ilmimris/wilayah-indonesia#api-usage
+
+## Uninstalling the Chart
+
+To uninstall/delete the release:
+
+  helm uninstall {{ .Release.Name }}
+
+This will remove all the Kubernetes components associated with the chart and delete the release.

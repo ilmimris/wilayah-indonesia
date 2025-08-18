@@ -1,0 +1,48 @@
+{{- if .Values.autoscaling.enabled }}
+{{- $apiVersion := "autoscaling/v2" }}
+{{- if semverCompare "< 1.23.0" .Capabilities.KubeVersion.Version }}
+{{- if not (.Capabilities.APIVersions.Has "autoscaling/v2") }}
+{{- $apiVersion = "autoscaling/v2beta2" }}
+{{- end }}
+{{- else if semverCompare "< 1.12.0" .Capabilities.KubeVersion.Version }}
+{{- $apiVersion = "autoscaling/v2beta1" }}
+{{- end }}
+apiVersion: {{ $apiVersion }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "wilayah-indonesia.fullname" . }}
+  labels:
+    {{- include "wilayah-indonesia.labels" . | nindent 4 }}
+  {{- with .Values.autoscaling.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "wilayah-indonesia.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+  {{- if .Values.autoscaling.behavior }}
+  behavior:
+    {{- toYaml .Values.autoscaling.behavior | nindent 4 }}
+  {{- end }}
+{{- end }}
