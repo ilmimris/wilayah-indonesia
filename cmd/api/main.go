@@ -9,6 +9,7 @@ import (
 	_ "github.com/marcboeker/go-duckdb"
 
 	"github.com/ilmimris/wilayah-indonesia/internal/api"
+	"github.com/ilmimris/wilayah-indonesia/pkg/service"
 )
 
 func main() {
@@ -30,32 +31,30 @@ func main() {
 	}
 	defer db.Close()
 
-	// // Load the required DuckDB extensions on startup
-	// _, err = db.Exec("INSTALL 'strings'; LOAD 'strings';")
-	// if err != nil {
-	// 	slog.Error("Failed to load DuckDB extensions", "error", err)
-	// 	os.Exit(1)
-	// }
+	// Create service and handler instances
+	svc := service.New(db)
+	handler := api.New(svc)
 
 	// Set up a new Fiber application
 	app := fiber.New()
 
 	// Define the search endpoint
-	app.Get("/v1/search", api.SearchHandler(db))
+	app.Get("/v1/search", handler.SearchHandler())
 
 	// Define the district search endpoint
-	app.Get("/v1/search/district", api.DistrictSearchHandler(db))
+	app.Get("/v1/search/district", handler.DistrictSearchHandler())
 
 	// Define the subdistrict search endpoint
-	app.Get("/v1/search/subdistrict", api.SubdistrictSearchHandler(db))
+	app.Get("/v1/search/subdistrict", handler.SubdistrictSearchHandler())
 
 	// Define the city search endpoint
-	app.Get("/v1/search/city", api.CitySearchHandler(db))
+	app.Get("/v1/search/city", handler.CitySearchHandler())
 
 	// Define the province search endpoint
-	app.Get("/v1/search/province", api.ProvinceSearchHandler(db))
+	app.Get("/v1/search/province", handler.ProvinceSearchHandler())
+
 	// Define the postal code search endpoint
-	app.Get("/v1/search/postal/:postalCode", api.PostalCodeSearchHandler(db))
+	app.Get("/v1/search/postal/:postalCode", handler.PostalCodeSearchHandler())
 
 	// Add health check endpoint
 	app.Get("/healthz", func(c *fiber.Ctx) error {

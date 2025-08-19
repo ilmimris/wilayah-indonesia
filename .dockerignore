@@ -1,4 +1,4 @@
-data/wilayah.sql
+data/*.sql
 PLAN.md
 TESTING.md
 test_endpoints.sh
