@@ -59,7 +59,8 @@ func main() {
 
 	// Execute the transformation query to denormalize the data and create the final regions table
 	// Using LEFT JOIN to maintain backward compatibility - postal code will be NULL if not available
-	transformationQuery := `
+
+transformationQuery := `
 CREATE OR REPLACE TABLE regions AS
 SELECT
 	   sub.kode AS id,
@@ -94,6 +95,22 @@ WHERE
 	_, err = db.Exec("DROP TABLE IF EXISTS wilayah_kodepos;")
 	if err != nil {
 		log.Fatal("Failed to drop wilayah_kodepos table:", err)
+	}
+
+	// Install and load the FTS extension
+	_, err = db.Exec("INSTALL fts;")
+	if err != nil {
+		log.Fatal("Failed to install FTS extension:", err)
+	}
+	_, err = db.Exec("LOAD fts;")
+	if err != nil {
+		log.Fatal("Failed to load FTS extension:", err)
+	}
+
+	// Create the FTS index on the 'full_text' column of the 'regions' table
+	_, err = db.Exec("PRAGMA create_fts_index('regions', 'id', 'full_text');")
+	if err != nil {
+		log.Fatal("Failed to create FTS index:", err)
 	}
 
 	fmt.Println("Data ingestion and preparation completed successfully with postal codes!")
