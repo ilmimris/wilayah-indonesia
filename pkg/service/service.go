@@ -6,8 +6,6 @@ package service
 import (
 	"database/sql"
 	"log/slog"
-	"regexp"
-	"strings"
 )
 
 // Region represents a region in Indonesia with all its administrative divisions.
@@ -41,19 +39,19 @@ func (s *Service) Search(query string) ([]Region, error) {
 
 	slog.Info("Processing search request", "query", query)
 
-	// Sanitize the user's query string
-	sanitizedQuery := sanitizeQuery(query)
-
-	// Prepare and execute the SQL query
+	// Prepare and execute the SQL query for Full-Text Search
 	sqlQuery := `
-		SELECT id, subdistrict, district, city, province, postal_code, full_text
-		FROM regions
-		WHERE full_text ILIKE '%' || ? || '%'
-		ORDER BY full_text
-		LIMIT 10
+		SELECT id, subdistrict, district, city, province, postal_code, full_text, score
+		FROM (
+			SELECT *, fts_main_regions.match_bm25(id, ?) AS score
+			FROM regions
+		)
+		WHERE score IS NOT NULL
+		ORDER BY score DESC
+		LIMIT 10;
 	`
 
-	rows, err := s.db.Query(sqlQuery, sanitizedQuery)
+	rows, err := s.db.Query(sqlQuery, query)
 	if err != nil {
 		slog.Error("Database query failed", "error", err, "query", query)
 		return nil, NewErrorf(ErrCodeDatabaseFailure, "database query failed: %v", err)
@@ -78,9 +76,6 @@ func (s *Service) SearchByDistrict(query string) ([]Region, error) {
 
 	slog.Info("Processing district search request", "query", query)
 
-	// Sanitize the user's query string
-	sanitizedQuery := sanitizeQuery(query)
-
 	// Prepare and execute the SQL query
 	sqlQuery := `
 		SELECT id, subdistrict, district, city, province, postal_code, full_text
@@ -90,7 +85,7 @@ func (s *Service) SearchByDistrict(query string) ([]Region, error) {
 		LIMIT 10
 	`
 
-	rows, err := s.db.Query(sqlQuery, sanitizedQuery, sanitizedQuery)
+	rows, err := s.db.Query(sqlQuery, query, query)
 	if err != nil {
 		slog.Error("Database query failed", "error", err, "query", query)
 		return nil, NewErrorf(ErrCodeDatabaseFailure, "database query failed: %v", err)
@@ -115,9 +110,6 @@ func (s *Service) SearchBySubdistrict(query string) ([]Region, error) {
 
 	slog.Info("Processing subdistrict search request", "query", query)
 
-	// Sanitize the user's query string
-	sanitizedQuery := sanitizeQuery(query)
-
 	// Prepare and execute the SQL query
 	sqlQuery := `
 		SELECT id, subdistrict, district, city, province, postal_code, full_text
@@ -127,7 +119,7 @@ func (s *Service) SearchBySubdistrict(query string) ([]Region, error) {
 		LIMIT 10
 	`
 
-	rows, err := s.db.Query(sqlQuery, sanitizedQuery, sanitizedQuery)
+	rows, err := s.db.Query(sqlQuery, query, query)
 	if err != nil {
 		slog.Error("Database query failed", "error", err, "query", query)
 		return nil, NewErrorf(ErrCodeDatabaseFailure, "database query failed: %v", err)
@@ -152,9 +144,6 @@ func (s *Service) SearchByCity(query string) ([]Region, error) {
 
 	slog.Info("Processing city search request", "query", query)
 
-	// Sanitize the user's query string
-	sanitizedQuery := sanitizeQuery(query)
-
 	// Prepare and execute the SQL query
 	sqlQuery := `
 		SELECT id, subdistrict, district, city, province, postal_code, full_text
@@ -166,7 +155,7 @@ func (s *Service) SearchByCity(query string) ([]Region, error) {
 		LIMIT 10
 	`
 
-	rows, err := s.db.Query(sqlQuery, sanitizedQuery, sanitizedQuery, sanitizedQuery, sanitizedQuery)
+	rows, err := s.db.Query(sqlQuery, query, query, query, query)
 	if err != nil {
 		slog.Error("Database query failed", "error", err, "query", query)
 		return nil, NewErrorf(ErrCodeDatabaseFailure, "database query failed: %v", err)
@@ -191,9 +180,6 @@ func (s *Service) SearchByProvince(query string) ([]Region, error) {
 
 	slog.Info("Processing province search request", "query", query)
 
-	// Sanitize the user's query string
-	sanitizedQuery := sanitizeQuery(query)
-
 	// Prepare and execute the SQL query
 	sqlQuery := `
 		SELECT id, subdistrict, district, city, province, postal_code, full_text
@@ -203,7 +189,7 @@ func (s *Service) SearchByProvince(query string) ([]Region, error) {
 		LIMIT 10
 	`
 
-	rows, err := s.db.Query(sqlQuery, sanitizedQuery, sanitizedQuery)
+	rows, err := s.db.Query(sqlQuery, query, query)
 	if err != nil {
 		slog.Error("Database query failed", "error", err, "query", query)
 		return nil, NewErrorf(ErrCodeDatabaseFailure, "database query failed: %v", err)
@@ -226,10 +212,7 @@ func (s *Service) SearchByPostalCode(postalCode string) ([]Region, error) {
 		return nil, NewError(ErrCodeInvalidInput, "postal code parameter is required")
 	}
 
-	// Validate that postal code is a 5-digit number
-	if len(postalCode) != 5 || !isNumeric(postalCode) {
-		return nil, NewError(ErrCodeInvalidInput, "postal code must be a 5-digit number")
-	}
+	
 
 	slog.Info("Processing postal code search request", "postalCode", postalCode)
 
@@ -269,7 +252,16 @@ func (s *Service) scanRegions(rows *sql.Rows) ([]Region, error) {
 	var results []Region
 	for rows.Next() {
 		var region Region
-		err := rows.Scan(
+		var score sql.NullFloat64 // Use sql.NullFloat64 for the score
+
+		// Check the column names to determine which columns to scan
+		cols, err := rows.Columns()
+		if err != nil {
+			return nil, NewErrorf(ErrCodeDatabaseFailure, "failed to get columns: %v", err)
+		}
+
+		// Prepare the scan arguments based on the available columns
+		scanArgs := []interface{}{
 			&region.ID,
 			&region.Subdistrict,
 			&region.District,
@@ -277,7 +269,14 @@ func (s *Service) scanRegions(rows *sql.Rows) ([]Region, error) {
 			&region.Province,
 			&region.PostalCode,
 			&region.FullText,
-		)
+		}
+
+		// If the score column is present, add it to the scan arguments
+		if len(cols) > 7 {
+			scanArgs = append(scanArgs, &score)
+		}
+
+		err = rows.Scan(scanArgs...)
 		if err != nil {
 			slog.Error("Failed to scan row", "error", err)
 			return nil, NewErrorf(ErrCodeDatabaseFailure, "failed to scan row: %v", err)
@@ -294,28 +293,4 @@ func (s *Service) scanRegions(rows *sql.Rows) ([]Region, error) {
 	return results, nil
 }
 
-// sanitizeQuery sanitizes the user's query string (lowercase, remove punctuation).
-func sanitizeQuery(query string) string {
-	// Convert to lowercase
-	lowerQuery := strings.ToLower(query)
 
-	// Remove punctuation
-	reg := regexp.MustCompile("[^a-zA-Z0-9 ]+")
-	sanitized := reg.ReplaceAllString(lowerQuery, "")
-
-	// Convert to sentence case
-	sanitized = strings.Title(sanitized)
-
-	// Trim whitespace
-	return strings.TrimSpace(sanitized)
-}
-
-// isNumeric checks if a string contains only numeric characters.
-func isNumeric(s string) bool {
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-	return true
-}
