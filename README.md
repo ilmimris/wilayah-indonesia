@@ -25,15 +25,22 @@ A high-performance, dependency-free Go API for fuzzy searching Indonesian admini
 
 ## Features
 
-- **Fuzzy Search**: Uses the Jaro-Winkler similarity algorithm for typo-tolerant searches with a threshold of 0.8 (80% similarity)
-- **High Performance**: Powered by DuckDB for fast querying of Indonesian administrative data
-- **Lightweight**: Minimal dependencies with GoFiber web framework
-- **Container Ready**: Dockerized application for easy deployment
-- **Configurable**: Environment-based configuration for port and database path
+- **BM25 Full-Text Search**: Utilizes DuckDB's `match_bm25` for fast and relevant full-text search across all administrative levels.
+- **Fuzzy Search**: Employs the Jaro-Winkler similarity algorithm for typo-tolerant searches on specific administrative levels (province, city, district, subdistrict).
+- **High Performance**: Powered by DuckDB for fast querying of Indonesian administrative data.
+- **Lightweight**: Minimal dependencies with the GoFiber web framework.
+- **Container Ready**: Dockerized application for easy deployment.
+- **Configurable**: Environment-based configuration for port and database path.
 
 ## API Usage
 
 ### Search Endpoint
+
+The general search endpoint now uses DuckDB's `match_bm25` function to perform a full-text search over a combined `full_text` field, which includes the province, city, district, and subdistrict names. This provides fast and relevant search results across all administrative levels.
+
+- **BM25 Full-Text Search**: The search is powered by the BM25 algorithm, which ranks results based on relevance to the query terms.
+- **Combined Text Field**: The `full_text` field is a concatenation of all administrative levels, allowing for a comprehensive search in a single query.
+- **Performance**: The query is highly optimized for performance, returning the top 10 results ordered by relevance score.
 
 ```
 GET /v1/search?q={query}
