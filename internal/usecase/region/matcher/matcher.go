@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode"
 	"sync"
+	"time"
 
 	"github.com/ilmimris/wilayah-indonesia/pkg/utils/ngram"
 )
@@ -214,38 +215,58 @@ func (m *Matcher) Suggest(query string) Suggestion {
 	}
 	m.cacheMu.RUnlock()
 
-	candidates := candidateFragments(query)
-	suggestion := Suggestion{}
-	orderedLevels := []Level{LevelProvince, LevelCity, LevelDistrict, LevelSubdistrict}
+	// For very long queries, skip expensive n-gram matching
+	if len(query) > 100 {
+		return Suggestion{}
+	}
 
-	for _, level := range orderedLevels {
-		idx := m.indexes[level]
-		if idx == nil {
-			continue
-		}
-		threshold := m.thresholds[level]
-		if threshold <= 0 {
-			threshold = 0.1
-		}
+	// Create a channel for the result
+	resultChan := make(chan Suggestion, 1)
+	
+	// Start the matching process in a goroutine
+	go func() {
+		candidates := candidateFragments(query)
+		suggestion := Suggestion{}
+		orderedLevels := []Level{LevelProvince, LevelCity, LevelDistrict, LevelSubdistrict}
 
-		var best *Match
+		// Limit total candidates processed for performance
+		maxCandidates := 5
+		candidatesProcessed := 0
+
+	CandidateLoop:
 		for _, fragment := range candidates {
 			// Limit the number of candidates processed for performance
 			if len(fragment) < 2 {
 				continue
 			}
 			
-			results := idx.Search(fragment)
-			if len(results) == 0 {
-				continue
+			// Skip if we've processed too many candidates
+			candidatesProcessed++
+			if candidatesProcessed > maxCandidates {
+				break
 			}
-			top := results[0]
-			if top.Similarity < threshold {
-				continue
-			}
-			if best == nil || top.Similarity > best.Similarity {
+
+			for _, level := range orderedLevels {
+				idx := m.indexes[level]
+				if idx == nil {
+					continue
+				}
+				threshold := m.thresholds[level]
+				if threshold <= 0 {
+					threshold = 0.1
+				}
+
+				results := idx.Search(fragment)
+				if len(results) == 0 {
+					continue
+				}
+				top := results[0]
+				if top.Similarity < threshold {
+					continue
+				}
+				
 				entry := top.Item
-				clone := Match{
+				match := Match{
 					Level:      entry.Level,
 					Name:       entry.Value,
 					Similarity: top.Similarity,
@@ -254,25 +275,54 @@ func (m *Matcher) Suggest(query string) Suggestion {
 					City:       entry.City,
 					Province:   entry.Province,
 				}
-				best = &clone
+				
+				// Update best match for this level if needed
+				switch level {
+				case LevelProvince:
+					if suggestion.Province == nil || top.Similarity > suggestion.Province.Similarity {
+						suggestion.Province = &match
+					}
+				case LevelCity:
+					if suggestion.City == nil || top.Similarity > suggestion.City.Similarity {
+						suggestion.City = &match
+					}
+				case LevelDistrict:
+					if suggestion.District == nil || top.Similarity > suggestion.District.Similarity {
+						suggestion.District = &match
+					}
+				case LevelSubdistrict:
+					if suggestion.Subdistrict == nil || top.Similarity > suggestion.Subdistrict.Similarity {
+						suggestion.Subdistrict = &match
+					}
+				}
+				
+				// Early termination if we have good matches for all levels
+				if suggestion.Province != nil && suggestion.City != nil && suggestion.District != nil && suggestion.Subdistrict != nil &&
+				   suggestion.Province.Similarity > 0.9 && suggestion.City.Similarity > 0.9 && 
+				   suggestion.District.Similarity > 0.9 && suggestion.Subdistrict.Similarity > 0.9 {
+					break CandidateLoop
+				}
 			}
 		}
 
-		if best != nil {
-			suggestion.matchSetter(level, best)
-		}
-	}
-
-	harmonizeSuggestion(&suggestion)
+		harmonizeSuggestion(&suggestion)
+		resultChan <- suggestion
+	}()
 	
-	// Cache result
-	m.cacheMu.Lock()
-	if len(m.cache) < m.cacheSize {
-		m.cache[query] = suggestion
+	// Wait for result with timeout (100ms)
+	select {
+	case suggestion := <-resultChan:
+		// Cache result
+		m.cacheMu.Lock()
+		if len(m.cache) < m.cacheSize {
+			m.cache[query] = suggestion
+		}
+		m.cacheMu.Unlock()
+		return suggestion
+	case <-time.After(100 * time.Millisecond):
+		// Timeout - return empty suggestion
+		return Suggestion{}
 	}
-	m.cacheMu.Unlock()
-
-	return suggestion
 }
 
 func harmonizeSuggestion(s *Suggestion) {
@@ -300,6 +350,16 @@ func harmonizeSuggestion(s *Suggestion) {
 }
 
 func candidateFragments(query string) []string {
+	// For very long queries, extract only the most relevant parts
+	if len(query) > 100 {
+		// Extract only words and numbers, limit to first 50 characters
+		words := strings.Fields(normalize(query[:50]))
+		if len(words) > 5 {
+			words = words[:5] // Take only first 5 words
+		}
+		return words
+	}
+
 	seen := make(map[string]struct{})
 	add := func(text string) {
 		normalized := normalize(text)
@@ -314,11 +374,18 @@ func candidateFragments(query string) []string {
 
 	add(query)
 
-	separators := []string{",", "|", ";", "-", "/", "\n", "	"}
+	separators := []string{",", "|", ";", "-", "/", "\n"}
 	for _, sep := range separators {
 		parts := strings.Split(query, sep)
 		for _, part := range parts {
 			add(part)
+			// Limit number of parts to prevent explosion
+			if len(seen) > 20 {
+				break
+			}
+		}
+		if len(seen) > 20 {
+			break
 		}
 	}
 
@@ -326,6 +393,10 @@ func candidateFragments(query string) []string {
 	if len(words) > 0 {
 		for _, word := range words {
 			add(word)
+			// Limit number of words to prevent explosion
+			if len(seen) > 20 {
+				break
+			}
 		}
 		// Limit n-gram combinations for performance
 		for size := 2; size <= 2; size++ { // Reduced from 3 to 2
@@ -334,6 +405,13 @@ func candidateFragments(query string) []string {
 			}
 			for i := 0; i <= len(words)-size; i++ {
 				add(strings.Join(words[i:i+size], " "))
+				// Limit number of combinations to prevent explosion
+				if len(seen) > 20 {
+					break
+				}
+			}
+			if len(seen) > 20 {
+				break
 			}
 		}
 	}
@@ -344,9 +422,9 @@ func candidateFragments(query string) []string {
 	}
 	sort.Slice(fragments, func(i, j int) bool { return len(fragments[i]) > len(fragments[j]) })
 	
-	// Limit number of fragments for performance
-	if len(fragments) > 10 {
-		fragments = fragments[:10]
+	// Limit number of fragments for performance (reduced from 10 to 5)
+	if len(fragments) > 5 {
+		fragments = fragments[:5]
 	}
 	
 	return fragments
@@ -356,6 +434,11 @@ func normalize(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return ""
+	}
+
+	// For very long strings, only process the first 100 characters
+	if len(value) > 100 {
+		value = value[:100]
 	}
 
 	var builder strings.Builder
@@ -387,6 +470,10 @@ func normalize(value string) string {
 	}
 
 	tokens := strings.Fields(normalized)
+	// Limit number of tokens to prevent explosion
+	if len(tokens) > 10 {
+		tokens = tokens[:10]
+	}
 	return strings.Join(tokens, " ")
 }
 
