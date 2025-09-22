@@ -6,6 +6,8 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"unicode/utf8"
+	"sync"
 )
 
 // Result captures the outcome of a fuzzy search.
@@ -97,6 +99,11 @@ type NGram[T comparable] struct {
 	grams   map[string]map[T]int
 	length  map[T]int
 	items   map[T]struct{}
+	
+	// Add cache for frequently searched queries
+	cache   map[string][]Result[T]
+	cacheMu sync.RWMutex
+	cacheSize int
 }
 
 // New constructs an NGram index with the provided items and options.
@@ -111,6 +118,8 @@ func New[T comparable](items []T, options ...Option[T]) (*NGram[T], error) {
 		grams:     make(map[string]map[T]int),
 		length:    make(map[T]int),
 		items:     make(map[T]struct{}),
+		cache:     make(map[string][]Result[T]),
+		cacheSize: 1000, // Default cache size
 	}
 
 	for _, opt := range options {
@@ -245,37 +254,17 @@ func (ng *NGram[T]) Clear() {
 	ng.items = make(map[T]struct{})
 	ng.grams = make(map[string]map[T]int)
 	ng.length = make(map[T]int)
+	
+	// Clear cache as well
+	ng.cacheMu.Lock()
+	ng.cache = make(map[string][]Result[T])
+	ng.cacheMu.Unlock()
 }
 
 // ItemsSharingNGrams returns the number of shared n-grams for every matching item.
 func (ng *NGram[T]) ItemsSharingNGrams(query string) map[T]int {
-	shared := make(map[T]int)
-	remaining := make(map[string]map[T]int)
-
-	for _, gram := range ng.split(ng.pad(query)) {
-		bucket, ok := ng.grams[gram]
-		if !ok {
-			continue
-		}
-
-		rem := remaining[gram]
-		if rem == nil {
-			rem = make(map[T]int)
-			remaining[gram] = rem
-		}
-
-		for item, count := range bucket {
-			if _, exists := rem[item]; !exists {
-				rem[item] = count
-			}
-			if rem[item] > 0 {
-				rem[item]--
-				shared[item]++
-			}
-		}
-	}
-
-	return shared
+	grams := ng.split(ng.pad(query))
+	return ng.itemsSharingFromGrams(grams)
 }
 
 // Search returns the items whose similarity with the query is at least the provided threshold.
@@ -284,21 +273,44 @@ func (ng *NGram[T]) Search(query string, threshold ...float64) []Result[T] {
 		return nil
 	}
 
+	// Check cache first
+	ng.cacheMu.RLock()
+	if cached, found := ng.cache[query]; found {
+		ng.cacheMu.RUnlock()
+		return cached
+	}
+	ng.cacheMu.RUnlock()
+
 	min := ng.threshold
 	if len(threshold) > 0 {
 		min = threshold[0]
 	}
 
-	shared := ng.ItemsSharingNGrams(query)
+	padded := ng.pad(query)
+	grams := ng.split(padded)
+	shared := ng.itemsSharingFromGrams(grams)
 	if len(shared) == 0 {
+		// Cache empty result
+		ng.cacheMu.Lock()
+		if len(ng.cache) < ng.cacheSize {
+			ng.cache[query] = nil
+		}
+		ng.cacheMu.Unlock()
 		return nil
 	}
 
-	paddedLen := len([]rune(ng.pad(query)))
+	paddedLen := utf8.RuneCountInString(padded)
 	results := make([]Result[T], 0, len(shared))
 
+	// Precompute allgrams to avoid repeated calculations
+	allgramsCache := make(map[T]int)
+	for item := range shared {
+		allgrams := paddedLen + ng.length[item] - (2 * ng.N) + 2
+		allgramsCache[item] = allgrams
+	}
+
 	for item, samegrams := range shared {
-		allgrams := paddedLen + ng.length[item] - (2 * ng.N) - samegrams + 2
+		allgrams := allgramsCache[item]
 		if allgrams <= 0 {
 			continue
 		}
@@ -314,6 +326,13 @@ func (ng *NGram[T]) Search(query string, threshold ...float64) []Result[T] {
 		}
 		return results[i].Similarity > results[j].Similarity
 	})
+
+	// Cache result
+	ng.cacheMu.Lock()
+	if len(ng.cache) < ng.cacheSize {
+		ng.cache[query] = results
+	}
+	ng.cacheMu.Unlock()
 
 	return results
 }
@@ -393,6 +412,38 @@ func (ng *NGram[T]) split(s string) []string {
 		grams = append(grams, string(runes[i:i+ng.N]))
 	}
 	return grams
+}
+
+func (ng *NGram[T]) itemsSharingFromGrams(grams []string) map[T]int {
+	if len(grams) == 0 {
+		return nil
+	}
+
+	queryCounts := make(map[string]int, len(grams))
+	for _, gram := range grams {
+		queryCounts[gram]++
+	}
+
+	shared := make(map[T]int, len(queryCounts))
+	for gram, queryCount := range queryCounts {
+		bucket, ok := ng.grams[gram]
+		if !ok {
+			continue
+		}
+		for item, itemCount := range bucket {
+			if queryCount < itemCount {
+				shared[item] += queryCount
+				continue
+			}
+			shared[item] += itemCount
+		}
+	}
+
+	if len(shared) == 0 {
+		return nil
+	}
+
+	return shared
 }
 
 func defaultKey[T comparable](item T) string {

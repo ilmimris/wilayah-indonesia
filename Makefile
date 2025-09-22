@@ -9,6 +9,7 @@ DB_FILE=$(DATA_DIR)/regions.duckdb
 SQL_FILE=$(DATA_DIR)/wilayah.sql
 KODEPOS_FILE=$(DATA_DIR)/wilayah_kodepos.sql
 PERIODE?=latest
+GO_TAGS?=no_duckdb_arrow,optimized
 
 # Default target
 .PHONY: all
@@ -17,17 +18,17 @@ all: build
 # Build the API binary
 .PHONY: build
 build:
-	go build -o $(BINARY) ./$(MAIN_DIR)
+	go build -tags="$(GO_TAGS)" -o $(BINARY) ./$(MAIN_DIR)
 
 # Run the API server
 .PHONY: run
 run:
-	go run ./$(MAIN_DIR)
+	go run -tags="$(GO_TAGS)" ./$(MAIN_DIR)
 
 # Run the data ingestor
 .PHONY: ingest
 ingest:
-	go run ./$(INGESTOR_DIR)
+	go run -tags="$(GO_TAGS)" ./$(INGESTOR_DIR)
 # Download the administrative data SQL file
 .PHONY: download-data
 download-data: download-admin-data download-kodepos-data fetch-bps
@@ -56,7 +57,7 @@ fetch-bps:
 # Run tests
 .PHONY: test
 test:
-	go test -v ./...
+	go test -tags="$(GO_TAGS)" -v ./...
 # Clean build artifacts
 .PHONY: clean
 clean:
