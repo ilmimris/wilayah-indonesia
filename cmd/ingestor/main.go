@@ -10,6 +10,11 @@ import (
 	ingestionusecase "github.com/ilmimris/wilayah-indonesia/internal/usecase/ingestion"
 )
 
+// main is the program entry point for the ingestion worker.
+// It configures a bootstrap logger, resolves ingestion paths and options from environment,
+// initializes the worker, runs the ingestion workflow, and then builds and persists a matcher
+// snapshot from the Wilayah SQL source. The function logs progress and exits with a non-zero
+// status on any initialization, ingestion, or snapshot failure.
 func main() {
 	bootstrapLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	slog.SetDefault(bootstrapLogger)

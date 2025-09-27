@@ -52,7 +52,15 @@ func (s Segments) CodeForLevel(level Level) string {
 	}
 }
 
-// ParseRegionID validates and splits a region identifier into hierarchical segments.
+// ParseRegionID validates an Indonesian region identifier and returns its hierarchical segments.
+// 
+// The function trims whitespace, enforces the expected region ID pattern (province and optional
+// dot-separated city, district, and subdistrict components), and splits the input into a Segments
+// value with Province, City, District, Subdistrict fields and an internal level set to the
+// corresponding depth. If a segment for the reported depth is empty, that segment is set to the
+// trimmed input to preserve boundary consistency.
+// 
+// Errors are returned for empty input, a pattern mismatch, or an unsupported depth (greater than 4).
 func ParseRegionID(id string) (Segments, error) {
 	trimmed := strings.TrimSpace(id)
 	if trimmed == "" {
@@ -102,7 +110,11 @@ func ParseRegionID(id string) (Segments, error) {
 	return segs, nil
 }
 
-// SharePrefix reports whether parent and child codes align on their hierarchical prefix.
+// SharePrefix reports whether the child region code has the parent code as its hierarchical prefix,
+// using '.' as the segment separator.
+// 
+// It returns true for exact equality and for cases where the child begins with the parent
+// followed immediately by a '.' boundary; it returns false for empty inputs or non-matching prefixes.
 func SharePrefix(parent, child string) bool {
 	parent = strings.TrimSpace(parent)
 	child = strings.TrimSpace(child)
@@ -122,7 +134,13 @@ func SharePrefix(parent, child string) bool {
 	return false
 }
 
-// IsConsistentHierarchy reports whether the provided codes can coexist within the same administrative chain.
+// IsConsistentHierarchy reports whether the provided region codes can coexist in a single
+// administrative chain by verifying hierarchical prefix compatibility.
+//
+// It trims whitespace and ignores empty strings. The first non-empty code becomes the
+// anchor; each subsequent non-empty code must share a valid hierarchical prefix with the
+// anchor in either direction. The anchor is updated to the longest code seen so far.
+// Returns true if all non-empty codes are pairwise compatible in this manner, false otherwise.
 func IsConsistentHierarchy(codes ...string) bool {
 	var anchor string
 	for _, code := range codes {
@@ -144,7 +162,9 @@ func IsConsistentHierarchy(codes ...string) bool {
 	return true
 }
 
-// CodeAtLevel flattens a region identifier to the requested hierarchy level.
+// CodeAtLevel returns the region code corresponding to the specified hierarchy level for the given region identifier.
+// It parses and validates the provided id and returns the code for LevelProvince, LevelCity, LevelDistrict, or LevelSubdistrict.
+// If parsing fails the underlying parse error is returned. If level is not one of the known levels an error is returned.
 func CodeAtLevel(id string, level Level) (string, error) {
 	segs, err := ParseRegionID(id)
 	if err != nil {

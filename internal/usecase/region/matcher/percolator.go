@@ -6,6 +6,9 @@ import (
 	"github.com/ilmimris/wilayah-indonesia/pkg/regionhierarchy"
 )
 
+// runPercolator searches the cross-product of candidate matches across hierarchical levels to find the highest‑scoring region suggestion that meets a minimum score.
+// 
+// It examines combinations drawn from levelMatches, scores each normalized and hierarchy-consistent selection using weights, and returns the best Suggestion and true when a non-empty province/city/district candidate meets or exceeds minScore. If no valid candidate is found or the best score is below minScore, it returns an empty Suggestion and false. The returned Suggestion.Score may be adjusted upward by a secondary averaging heuristic before being returned.
 func runPercolator(levelMatches map[Level][]Match, weights map[Level]float64, minScore float64) (Suggestion, bool) {
 	choices := make([][]Match, len(levelOrder))
 	for i, level := range levelOrder {
@@ -72,6 +75,16 @@ func runPercolator(levelMatches map[Level][]Match, weights map[Level]float64, mi
 	return best, true
 }
 
+// normalizeSelection normalizes a slice of Matches to ensure hierarchical consistency across
+// province, city, district, and subdistrict levels.
+//
+// It returns an adjusted copy of the input where inconsistent lower-level matches are cleared,
+// missing province/city codes may be derived from a district match, and a subdistrict is kept
+// only if it can be anchored to a nearest higher-level region (district, then city, then province).
+// If the district is absent the function delegates to normalizeWithoutDistrict to perform
+// appropriate promotions and validations. The function returns (nil, false) when the selection
+// cannot be normalized into a valid hierarchy (for example when both province and city are empty
+// after normalization); otherwise it returns the normalized slice and true.
 func normalizeSelection(selection []Match) ([]Match, bool) {
 	normalized := make([]Match, len(selection))
 	copy(normalized, selection)
@@ -134,6 +147,13 @@ func normalizeSelection(selection []Match) ([]Match, bool) {
 	return normalized, true
 }
 
+// normalizeWithoutDistrict normalizes a selection when no district-level match is present.
+// 
+// It ensures at least one of province or city remains and that province/city are hierarchically consistent.
+// If province is empty but city contains a province-level code, the city is promoted to a province match.
+// The district slot is cleared. If a subdistrict is provided, it is retained only when it shares a prefix with an anchor region (city if present, otherwise province); otherwise the subdistrict is cleared.
+// 
+// Returns the possibly-updated selection and true on success, or nil and false if neither province nor city is present after normalization.
 func normalizeWithoutDistrict(selection []Match, province, city, subdistrict Match) ([]Match, bool) {
 	if province.RegionID == "" && city.RegionID == "" {
 		return nil, false
@@ -169,6 +189,10 @@ func normalizeWithoutDistrict(selection []Match, province, city, subdistrict Mat
 	return selection, true
 }
 
+// evaluateCombination computes a weighted score for the given selection using the provided per-level weights.
+// It returns a score in the range [0, 1] where higher values indicate better overall match quality.
+// Matches with empty RegionID or non-positive weight are ignored. Selections that contain multiple matched
+// levels receive small bonuses when adjacent matches share a region prefix and for each additional filled level.
 func evaluateCombination(selection []Match, weights map[Level]float64) float64 {
 	var weightedSum float64
 	var totalWeight float64
@@ -201,6 +225,9 @@ func evaluateCombination(selection []Match, weights map[Level]float64) float64 {
 	return score
 }
 
+// suggestionFromSelection converts a normalized slice of Match values into a Suggestion.
+// For each non-empty Match in selection, the corresponding level field (as defined by levelOrder)
+// is populated with that match. The assembled Suggestion is then harmonized before being returned.
 func suggestionFromSelection(selection []Match) Suggestion {
 	suggestion := Suggestion{}
 	for i, match := range selection {
