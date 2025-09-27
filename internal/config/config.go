@@ -79,6 +79,9 @@ type MatcherConfig struct {
 	CacheSize        int
 }
 
+// applyMatcherDefaults sets sensible defaults on the provided MatcherConfig when fields are zero-valued.
+// It populates SnapshotPath, Timeout, ParallelTopK, LevelThresholds, LevelWeights, MinCombinedScore,
+// and CacheSize with sane defaults while preserving any values already set on cfg.
 func applyMatcherDefaults(cfg *MatcherConfig) {
 	defaultThresholds := map[regionhierarchy.Level]float64{
 		regionhierarchy.LevelProvince:    0.4,
@@ -161,7 +164,16 @@ func NewFiber() (*fiber.App, error) {
 	return app, nil
 }
 
-// BootstrapHTTP wires HTTP components; future phases will connect repositories and use cases.
+// BootstrapHTTP wires and configures the HTTP server, database connection, logger, optional region matcher, and routing.
+// 
+// It enforces read-only mode on the provided options and applies matcher defaults. If a matcher snapshot is available it
+// will attempt to initialise a matcher and inject it into the region use case; if the snapshot is missing or initialisation
+// fails the bootstrap proceeds with a nil matcher and logs a warning. The function opens a DuckDB connection, constructs the
+// region use case, creates a Fiber app with request logging and recovery middleware, registers region routes, and exposes a
+// /healthz endpoint that verifies the database is reachable within a 2-second timeout.
+// 
+// On success it returns an HTTPBootstrap containing the configured App, DB, Logger and the Matcher configuration. An error
+// is returned if logger creation, database initialization, use-case construction, or Fiber app creation fail.
 func BootstrapHTTP(ctx context.Context, opts Options) (HTTPBootstrap, error) {
 	opts.ReadOnly = true
 	applyMatcherDefaults(&opts.Matcher)
@@ -234,7 +246,10 @@ func BootstrapHTTP(ctx context.Context, opts Options) (HTTPBootstrap, error) {
 	return HTTPBootstrap{App: app, DB: db, Logger: logger, Matcher: opts.Matcher}, nil
 }
 
-// BootstrapWorker wires dependencies for the ingestion worker binary.
+// BootstrapWorker creates and wires the dependencies required by the ingestion worker.
+// It returns a WorkerBootstrap containing the logger, database connection, ingestion runner,
+// use case, and resolved matcher configuration. An error is returned if required initialization
+// (such as logger or database creation) fails.
 func BootstrapWorker(ctx context.Context, opts Options) (WorkerBootstrap, error) {
 	opts.ReadOnly = false
 	applyMatcherDefaults(&opts.Matcher)

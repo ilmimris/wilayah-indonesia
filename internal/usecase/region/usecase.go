@@ -43,6 +43,11 @@ type regionUseCase struct {
 }
 
 // New creates a RegionUseCase backed by the provided repository.
+// It retrieves repository capabilities and returns an error if that fails.
+// If ctx is nil, context.Background() is used. If opts.Logger is nil, slog.Default() is used.
+// MatcherMinScore defaults to 0.6 when opts.MatcherMinScore is zero or negative.
+// The returned use case is configured with the provided repository, a LimitNormalizer
+// using opts.DefaultLimit and opts.MaxLimit, and any supplied Matcher and MatcherMinScore.
 func New(ctx context.Context, repo repository.RegionRepository, opts RegionUseCaseOptions) (RegionUseCase, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -224,6 +229,9 @@ func (uc *regionUseCase) validateDatasetOptions(opts model.SearchOptions) error 
 	return nil
 }
 
+// mapToResponses converts a slice of entity.RegionWithScore into a slice of model.RegionResponse.
+// Each resulting response contains the region fields (ID, Subdistrict, District, City, Province,
+// PostalCode, FullText, BPS) and includes Scores when the source Score is non-nil.
 func mapToResponses(items []entity.RegionWithScore) []model.RegionResponse {
 	responses := make([]model.RegionResponse, 0, len(items))
 	for _, item := range items {
@@ -245,6 +253,11 @@ func mapToResponses(items []entity.RegionWithScore) []model.RegionResponse {
 	return responses
 }
 
+// convertSuggestion converts a regionmatcher.Suggestion into a model.Suggestion suitable for API responses.
+// If the input has no province/city/district/subdistrict matches it returns nil.
+// The result copies strategy, score and any provided matches; when a higher-level match (province, city, or district)
+// is missing it attempts to derive it from available lower-level matches by resolving the corresponding region code
+// and preserving the inferred name and similarity.
 func convertSuggestion(s regionmatcher.Suggestion) *model.Suggestion {
 	if s.Province == nil && s.City == nil && s.District == nil && s.Subdistrict == nil {
 		return nil
@@ -306,6 +319,8 @@ func convertSuggestion(s regionmatcher.Suggestion) *model.Suggestion {
 	return suggestion
 }
 
+// sanitizeFTSQuery removes single-quote and double-quote characters from q.
+// It returns the input string with all ' and " characters removed.
 func sanitizeFTSQuery(q string) string {
 	return strings.Map(func(r rune) rune {
 		switch r {

@@ -10,6 +10,8 @@ import (
 	"github.com/ilmimris/wilayah-indonesia/pkg/regionhierarchy"
 )
 
+// main initializes logging, constructs runtime options from environment variables, bootstraps the HTTP application, and starts the HTTP server.
+// It reads DB_PATH, PORT, and MATCHER_SNAPSHOT_PATH (among other configured defaults), sets the process logger, and exits the process if bootstrapping or server startup fails.
 func main() {
 	bootstrapLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	slog.SetDefault(bootstrapLogger)

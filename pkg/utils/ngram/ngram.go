@@ -73,7 +73,10 @@ func WithPadChar[T comparable](padChar rune) Option[T] {
 	}
 }
 
-// WithKey registers a custom function for extracting the string key of an item.
+// WithKey returns an Option that sets the function used to extract a string key from an item.
+// If the provided key function is nil the option will return an error when applied.
+// When the item type T is a string, this also configures the index to normalize string queries
+// by applying the same key function to the query value.
 func WithKey[T comparable](key func(T) string) Option[T] {
 	return func(ng *NGram[T]) error {
 		if key == nil {
@@ -113,7 +116,12 @@ type NGram[T comparable] struct {
 	cacheSize int
 }
 
-// New constructs an NGram index with the provided items and options.
+// New creates an NGram index configured by the supplied options and populated with the provided items.
+// 
+// The function applies each Option in order and returns an error if any option fails. It establishes sensible defaults
+// (N = 3, warp = 1.0, threshold = 0, padChar = '$', padLen defaults to N-1 when unset) and initializes internal
+// structures including gram buckets, item length/map, item set, and a results cache (default size 1000). If an initial
+// items slice is provided, those items are indexed before the index is returned.
 func New[T comparable](items []T, options ...Option[T]) (*NGram[T], error) {
 	ng := &NGram[T]{
 		threshold:      0,
@@ -454,6 +462,8 @@ func (ng *NGram[T]) itemsSharingFromGrams(grams []string) map[T]int {
 	return shared
 }
 
+// defaultKey returns a string representation for item.
+// If item is a string it is returned unchanged, if it implements fmt.Stringer its String method is used, otherwise fmt.Sprint is used.
 func defaultKey[T comparable](item T) string {
 	switch v := any(item).(type) {
 	case string:
