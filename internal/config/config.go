@@ -22,7 +22,7 @@ import (
 	ingestionusecase "github.com/ilmimris/wilayah-indonesia/internal/usecase/ingestion"
 	regionusecase "github.com/ilmimris/wilayah-indonesia/internal/usecase/region"
 
-	_ "github.com/marcboeker/go-duckdb"
+	_ "github.com/marcboeker/go-duckdb/v2"
 )
 
 // Options groups runtime configuration flags consumed by bootstrap routines.

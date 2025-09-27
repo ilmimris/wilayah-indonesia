@@ -8,6 +8,7 @@ DATA_DIR=data
 DB_FILE=$(DATA_DIR)/regions.duckdb
 SQL_FILE=$(DATA_DIR)/wilayah.sql
 KODEPOS_FILE=$(DATA_DIR)/wilayah_kodepos.sql
+BPS_FILE=$(DATA_DIR)/bps_wilayah.sql
 PERIODE?=latest
 GO_TAGS?=no_duckdb_arrow,optimized
 
@@ -51,8 +52,7 @@ prepare-db: download-data ingest
 # Fetch wilayah data from BPS API and render SQL dump
 .PHONY: fetch-bps
 fetch-bps:
-	python3 scripts/fetch_bps_wilayah.py --periode-merge $(PERIODE) --workers 8 --sql-dir data --sql-filename bps_wilayah.sql
-
+		curl -o $(BPS_FILE) https://raw.githubusercontent.com/ilmimris/wilayah-indonesia-bps/refs/heads/main/data/sql/bps_wilayah_2024_1.2025.sql
 
 # Run tests
 .PHONY: test
@@ -80,7 +80,7 @@ docker-build:
 # Run Docker container
 .PHONY: docker-run
 docker-run:
-	docker run -p 8080:8080 $(BINARY)
+	docker run   -p 8080:8080 $(BINARY)
 
 # Help
 .PHONY: help

@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for Indonesian Regions Fuzzy Search API
 
 # Stage 1: Builder
-FROM golang:1.24 AS builder
+FROM golang:1.24.6-bookworm AS builder
 
 # Install build tools
 RUN apt-get update && apt-get install -y build-essential
@@ -18,11 +18,11 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binary as a fully static executable
-RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-w -s -extldflags '-static'" -a -o regions-api ./cmd/api
+# Build the binary with CGO enabled so DuckDB extensions can be loaded at runtime
+RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-w -s" -o regions-api ./cmd/api
 
 # Stage 2: Final
-FROM gcr.io/distroless/static-debian11
+FROM gcr.io/distroless/cc-debian12
 
 # Set working directory
 WORKDIR /app
