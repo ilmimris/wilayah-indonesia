@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/ilmimris/wilayah-indonesia/internal/config"
+	"github.com/ilmimris/wilayah-indonesia/internal/ngramcache"
 	ingestionusecase "github.com/ilmimris/wilayah-indonesia/internal/usecase/ingestion"
 )
 
@@ -43,4 +44,16 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("Ingestion completed successfully")
+
+	slog.Info("Building matcher snapshot", "source", paths.WilayahSQL, "destination", bootstrap.Matcher.SnapshotPath)
+	snapshot, err := ngramcache.BuildSnapshotFromWilayah(paths.WilayahSQL)
+	if err != nil {
+		slog.Error("Failed to build matcher snapshot", "error", err)
+		os.Exit(1)
+	}
+	if err := ngramcache.WriteSnapshot(snapshot, bootstrap.Matcher.SnapshotPath); err != nil {
+		slog.Error("Failed to persist matcher snapshot", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("Matcher snapshot generated", "path", bootstrap.Matcher.SnapshotPath, "facets", len(snapshot.Facets), "dataset_hash", snapshot.Metadata.DatasetHash)
 }

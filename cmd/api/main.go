@@ -4,8 +4,10 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/ilmimris/wilayah-indonesia/internal/config"
+	"github.com/ilmimris/wilayah-indonesia/pkg/regionhierarchy"
 )
 
 func main() {
@@ -14,9 +16,21 @@ func main() {
 
 	ctx := context.Background()
 	opts := config.Options{
-		DBPath: os.Getenv("DB_PATH"),
-		Port:   os.Getenv("PORT"),
+		DBPath:   os.Getenv("DB_PATH"),
+		Port:     os.Getenv("PORT"),
 		ReadOnly: true,
+		Matcher: config.MatcherConfig{
+			SnapshotPath:     os.Getenv("MATCHER_SNAPSHOT_PATH"),
+			MinCombinedScore: 0.5,
+			Timeout:          250 * time.Millisecond,
+			LevelThresholds: map[regionhierarchy.Level]float64{
+				regionhierarchy.LevelProvince:    0.3,  // 0.5
+				regionhierarchy.LevelCity:        0.35, // 0.5
+				regionhierarchy.LevelDistrict:    0.35, // 0.5
+				regionhierarchy.LevelSubdistrict: 0.3,  // 0.4
+			},
+			ParallelTopK: 50,
+		},
 	}
 
 	bootstrap, err := config.BootstrapHTTP(ctx, opts)

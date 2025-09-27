@@ -15,7 +15,8 @@
                 "no_duckdb_arrow"
             ],
             "env": {
-                "DB_PATH": "${workspaceFolder}/data/regions.duckdb"
+                "DB_PATH": "${workspaceFolder}/data/regions.duckdb",
+                "MATCHER_SNAPSHOT_PATH": "${workspaceFolder}/data/matcher_snapshot.json"
             }
         }
     ]

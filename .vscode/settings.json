@@ -1,3 +1,13 @@
 {
-    "chatgpt.openOnStartup": true
+    "chatgpt.openOnStartup": true,
+    "dbcode.connections": [
+        {
+            "connectionId": "9hOBxgFMmjocV9Rg-PRXj",
+            "name": "Regions",
+            "driver": "duckdb",
+            "connectionType": "socket",
+            "socket": "wilayah-indonesia/data/regions.duckdb",
+            "readOnly": false
+        }
+    ]
 }

@@ -6,7 +6,6 @@ import (
 	"math"
 	"sort"
 	"strings"
-	"unicode/utf8"
 	"sync"
 )
 
@@ -81,6 +80,13 @@ func WithKey[T comparable](key func(T) string) Option[T] {
 			return errors.New("key function cannot be nil")
 		}
 		ng.key = key
+		var zero T
+		if _, ok := any(zero).(string); ok {
+			ng.normalizeQuery = func(s string) string {
+				val, _ := any(s).(T)
+				return key(val)
+			}
+		}
 		return nil
 	}
 }
@@ -93,33 +99,35 @@ type NGram[T comparable] struct {
 	padLen    int
 	padChar   rune
 
-	key func(T) string
+	key            func(T) string
+	normalizeQuery func(string) string
 
 	padding string
 	grams   map[string]map[T]int
 	length  map[T]int
 	items   map[T]struct{}
-	
+
 	// Add cache for frequently searched queries
-	cache   map[string][]Result[T]
-	cacheMu sync.RWMutex
+	cache     map[string][]Result[T]
+	cacheMu   sync.RWMutex
 	cacheSize int
 }
 
 // New constructs an NGram index with the provided items and options.
 func New[T comparable](items []T, options ...Option[T]) (*NGram[T], error) {
 	ng := &NGram[T]{
-		threshold: 0,
-		warp:      1.0,
-		N:         3,
-		padLen:    -1,
-		padChar:   '$',
-		key:       defaultKey[T],
-		grams:     make(map[string]map[T]int),
-		length:    make(map[T]int),
-		items:     make(map[T]struct{}),
-		cache:     make(map[string][]Result[T]),
-		cacheSize: 1000, // Default cache size
+		threshold:      0,
+		warp:           1.0,
+		N:              3,
+		padLen:         -1,
+		padChar:        '$',
+		key:            defaultKey[T],
+		normalizeQuery: func(s string) string { return s },
+		grams:          make(map[string]map[T]int),
+		length:         make(map[T]int),
+		items:          make(map[T]struct{}),
+		cache:          make(map[string][]Result[T]),
+		cacheSize:      1000, // Default cache size
 	}
 
 	for _, opt := range options {
@@ -196,7 +204,7 @@ func (ng *NGram[T]) Add(item T) {
 	grams := ng.split(padded)
 
 	ng.items[item] = struct{}{}
-	ng.length[item] = len([]rune(padded))
+	ng.length[item] = len(grams)
 
 	for _, gram := range grams {
 		bucket, ok := ng.grams[gram]
@@ -254,7 +262,7 @@ func (ng *NGram[T]) Clear() {
 	ng.items = make(map[T]struct{})
 	ng.grams = make(map[string]map[T]int)
 	ng.length = make(map[T]int)
-	
+
 	// Clear cache as well
 	ng.cacheMu.Lock()
 	ng.cache = make(map[string][]Result[T])
@@ -273,13 +281,18 @@ func (ng *NGram[T]) Search(query string, threshold ...float64) []Result[T] {
 		return nil
 	}
 
+	query = ng.normalizeQuery(query)
+	useCache := len(threshold) == 0
+
 	// Check cache first
-	ng.cacheMu.RLock()
-	if cached, found := ng.cache[query]; found {
+	if useCache {
+		ng.cacheMu.RLock()
+		if cached, found := ng.cache[query]; found {
+			ng.cacheMu.RUnlock()
+			return cached
+		}
 		ng.cacheMu.RUnlock()
-		return cached
 	}
-	ng.cacheMu.RUnlock()
 
 	min := ng.threshold
 	if len(threshold) > 0 {
@@ -290,27 +303,21 @@ func (ng *NGram[T]) Search(query string, threshold ...float64) []Result[T] {
 	grams := ng.split(padded)
 	shared := ng.itemsSharingFromGrams(grams)
 	if len(shared) == 0 {
-		// Cache empty result
-		ng.cacheMu.Lock()
-		if len(ng.cache) < ng.cacheSize {
-			ng.cache[query] = nil
+		if useCache {
+			ng.cacheMu.Lock()
+			if _, ok := ng.cache[query]; ok || len(ng.cache) < ng.cacheSize {
+				ng.cache[query] = nil
+			}
+			ng.cacheMu.Unlock()
 		}
-		ng.cacheMu.Unlock()
 		return nil
 	}
 
-	paddedLen := utf8.RuneCountInString(padded)
+	queryGramCount := len(grams)
 	results := make([]Result[T], 0, len(shared))
 
-	// Precompute allgrams to avoid repeated calculations
-	allgramsCache := make(map[T]int)
-	for item := range shared {
-		allgrams := paddedLen + ng.length[item] - (2 * ng.N) + 2
-		allgramsCache[item] = allgrams
-	}
-
 	for item, samegrams := range shared {
-		allgrams := allgramsCache[item]
+		allgrams := queryGramCount + ng.length[item] - samegrams
 		if allgrams <= 0 {
 			continue
 		}
@@ -327,12 +334,13 @@ func (ng *NGram[T]) Search(query string, threshold ...float64) []Result[T] {
 		return results[i].Similarity > results[j].Similarity
 	})
 
-	// Cache result
-	ng.cacheMu.Lock()
-	if len(ng.cache) < ng.cacheSize {
-		ng.cache[query] = results
+	if useCache {
+		ng.cacheMu.Lock()
+		if _, ok := ng.cache[query]; ok || len(ng.cache) < ng.cacheSize {
+			ng.cache[query] = results
+		}
+		ng.cacheMu.Unlock()
 	}
-	ng.cacheMu.Unlock()
 
 	return results
 }
