@@ -6,7 +6,7 @@
             "name": "Regions",
             "driver": "duckdb",
             "connectionType": "socket",
-            "socket": "wilayah-indonesia/data/regions.duckdb",
+            "socket": "data/regions.duckdb",
             "readOnly": false
         }
     ]
