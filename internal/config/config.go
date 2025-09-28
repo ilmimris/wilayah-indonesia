@@ -81,7 +81,11 @@ type MatcherConfig struct {
 
 // applyMatcherDefaults sets sensible defaults on the provided MatcherConfig when fields are zero-valued.
 // It populates SnapshotPath, Timeout, ParallelTopK, LevelThresholds, LevelWeights, MinCombinedScore,
-// and CacheSize with sane defaults while preserving any values already set on cfg.
+// applyMatcherDefaults applies sensible defaults to a MatcherConfig, filling any zero-valued fields.
+// It sets SnapshotPath to "data/matcher_snapshot.json", Timeout to 100ms, ParallelTopK to 5,
+// per-level thresholds (province: 0.4, city: 0.4, district: 0.45, subdistrict: 0.45) and weights
+// (province: 0.2, city: 0.3, district: 0.25, subdistrict: 0.25) where missing, MinCombinedScore to 0.6,
+// and CacheSize to 1000. Values already present on cfg are preserved.
 func applyMatcherDefaults(cfg *MatcherConfig) {
 	defaultThresholds := map[regionhierarchy.Level]float64{
 		regionhierarchy.LevelProvince:    0.4,
@@ -158,7 +162,7 @@ func NewDuckDB(ctx context.Context, opts Options) (*sql.DB, error) {
 	return conn, nil
 }
 
-// NewFiber returns a basic Fiber app without middleware, ready for configuration.
+// NewFiber creates a new Fiber application instance without any middleware, ready for further configuration.
 func NewFiber() (*fiber.App, error) {
 	app := fiber.New()
 	return app, nil
@@ -173,7 +177,15 @@ func NewFiber() (*fiber.App, error) {
 // /healthz endpoint that verifies the database is reachable within a 2-second timeout.
 // 
 // On success it returns an HTTPBootstrap containing the configured App, DB, Logger and the Matcher configuration. An error
-// is returned if logger creation, database initialization, use-case construction, or Fiber app creation fail.
+// BootstrapHTTP creates and configures the HTTP server, database, logger, and optional region matcher,
+// and returns an HTTPBootstrap ready for serving.
+// It applies matcher defaults, sets ReadOnly mode on the provided options, and attempts to load and
+// initialize a matcher snapshot; matcher initialization failures are logged and do not abort bootstrapping.
+// The function opens a DuckDB connection, constructs the region repository and use case (injecting the
+// matcher if available), creates a Fiber app with request logging and recovery middleware, registers
+// region routes under /v1, and adds a /healthz endpoint that pings the database with a 2-second timeout.
+// It returns the configured HTTPBootstrap on success, or an error if logger creation, database
+// initialization, use-case construction, or Fiber app creation fail.
 func BootstrapHTTP(ctx context.Context, opts Options) (HTTPBootstrap, error) {
 	opts.ReadOnly = true
 	applyMatcherDefaults(&opts.Matcher)
@@ -249,7 +261,9 @@ func BootstrapHTTP(ctx context.Context, opts Options) (HTTPBootstrap, error) {
 // BootstrapWorker creates and wires the dependencies required by the ingestion worker.
 // It returns a WorkerBootstrap containing the logger, database connection, ingestion runner,
 // use case, and resolved matcher configuration. An error is returned if required initialization
-// (such as logger or database creation) fails.
+// BootstrapWorker creates and wires the components required to run the ingestion worker and returns a WorkerBootstrap.
+// It sets up the logger, opens the DuckDB database, constructs the admin repository, file loader, SQL normalizer,
+// ingestion use case, and the worker runner. Returns a non-nil error if any initialization step fails.
 func BootstrapWorker(ctx context.Context, opts Options) (WorkerBootstrap, error) {
 	opts.ReadOnly = false
 	applyMatcherDefaults(&opts.Matcher)

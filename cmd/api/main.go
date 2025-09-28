@@ -11,7 +11,14 @@ import (
 )
 
 // main initializes logging, constructs runtime options from environment variables, bootstraps the HTTP application, and starts the HTTP server.
-// It reads DB_PATH, PORT, and MATCHER_SNAPSHOT_PATH (among other configured defaults), sets the process logger, and exits the process if bootstrapping or server startup fails.
+// main is the program entry point that configures logging, constructs runtime options from environment
+// variables (including DB_PATH, PORT, and MATCHER_SNAPSHOT_PATH), bootstraps the HTTP application, and
+// starts the HTTP server.
+//
+// It sets a temporary bootstrap logger, populates config.Options with a MatcherConfig and other defaults,
+// invokes config.BootstrapHTTP, and—if the bootstrap provides a logger—sets it as the default. The server
+// listens on PORT (defaults to "8080" when empty). If bootstrapping or server startup fails, main logs an
+// error and exits with status 1. The bootstrapped database is closed on exit.
 func main() {
 	bootstrapLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	slog.SetDefault(bootstrapLogger)

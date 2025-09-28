@@ -14,7 +14,9 @@ import (
 // It configures a bootstrap logger, resolves ingestion paths and options from environment,
 // initializes the worker, runs the ingestion workflow, and then builds and persists a matcher
 // snapshot from the Wilayah SQL source. The function logs progress and exits with a non-zero
-// status on any initialization, ingestion, or snapshot failure.
+// main initializes the ingestion worker, executes the ingestion workflow, builds a matcher snapshot from the Wilayah SQL source, and persists that snapshot.
+//
+// It reads DATA_DIR and DB_PATH from the environment, bootstraps the worker, runs the ingestion steps, and writes the generated matcher snapshot to the configured snapshot path while logging progress. On any initialization, ingestion, or snapshot failure the program logs the error and exits with a non-zero status.
 func main() {
 	bootstrapLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	slog.SetDefault(bootstrapLogger)

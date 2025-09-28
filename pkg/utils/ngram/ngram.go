@@ -62,7 +62,8 @@ func WithPadLen[T comparable](padLen int) Option[T] {
 	}
 }
 
-// WithPadChar configures the character used for padding.
+// WithPadChar returns an Option that sets the rune used to build the padding string for the index.
+// If `padChar` is 0 the option returns an error.
 func WithPadChar[T comparable](padChar rune) Option[T] {
 	return func(ng *NGram[T]) error {
 		if padChar == 0 {
@@ -76,7 +77,9 @@ func WithPadChar[T comparable](padChar rune) Option[T] {
 // WithKey returns an Option that sets the function used to extract a string key from an item.
 // If the provided key function is nil the option will return an error when applied.
 // When the item type T is a string, this also configures the index to normalize string queries
-// by applying the same key function to the query value.
+// WithKey returns an Option that sets the function used to extract a string key from an item.
+// It validates that the provided key is non-nil and assigns it to the index. If the item type T is
+// string, the option also configures the index to apply the same key function to query strings.
 func WithKey[T comparable](key func(T) string) Option[T] {
 	return func(ng *NGram[T]) error {
 		if key == nil {
@@ -121,7 +124,7 @@ type NGram[T comparable] struct {
 // The function applies each Option in order and returns an error if any option fails. It establishes sensible defaults
 // (N = 3, warp = 1.0, threshold = 0, padChar = '$', padLen defaults to N-1 when unset) and initializes internal
 // structures including gram buckets, item length/map, item set, and a results cache (default size 1000). If an initial
-// items slice is provided, those items are indexed before the index is returned.
+// items slice is non-empty the items are indexed before the constructed index is returned.
 func New[T comparable](items []T, options ...Option[T]) (*NGram[T], error) {
 	ng := &NGram[T]{
 		threshold:      0,
@@ -463,7 +466,8 @@ func (ng *NGram[T]) itemsSharingFromGrams(grams []string) map[T]int {
 }
 
 // defaultKey returns a string representation for item.
-// If item is a string it is returned unchanged, if it implements fmt.Stringer its String method is used, otherwise fmt.Sprint is used.
+// defaultKey returns the string representation of item.
+// If item is a string it is returned unchanged; if it implements fmt.Stringer its String method is used; otherwise fmt.Sprint is used.
 func defaultKey[T comparable](item T) string {
 	switch v := any(item).(type) {
 	case string:

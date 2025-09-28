@@ -60,7 +60,7 @@ func (s Segments) CodeForLevel(level Level) string {
 // corresponding depth. If a segment for the reported depth is empty, that segment is set to the
 // trimmed input to preserve boundary consistency.
 // 
-// Errors are returned for empty input, a pattern mismatch, or an unsupported depth (greater than 4).
+// the identifier has unsupported depth (more than four dot-separated parts).
 func ParseRegionID(id string) (Segments, error) {
 	trimmed := strings.TrimSpace(id)
 	if trimmed == "" {
@@ -106,7 +106,7 @@ func ParseRegionID(id string) (Segments, error) {
 // using '.' as the segment separator.
 // 
 // It returns true for exact equality and for cases where the child begins with the parent
-// followed immediately by a '.' boundary; it returns false for empty inputs or non-matching prefixes.
+// than parent requires the next character to be '.' to ensure a proper boundary.
 func SharePrefix(parent, child string) bool {
 	parent = strings.TrimSpace(parent)
 	child = strings.TrimSpace(child)
@@ -132,7 +132,8 @@ func SharePrefix(parent, child string) bool {
 // It trims whitespace and ignores empty strings. The first non-empty code becomes the
 // anchor; each subsequent non-empty code must share a valid hierarchical prefix with the
 // anchor in either direction. The anchor is updated to the longest code seen so far.
-// Returns true if all non-empty codes are pairwise compatible in this manner, false otherwise.
+// IsConsistentHierarchy reports whether the provided region codes can coexist in a single hierarchical chain.
+// It returns true if every non-empty code (after trimming whitespace) is either an exact match or a dot-delimited hierarchical prefix of another code, and false if any pair is incompatible.
 func IsConsistentHierarchy(codes ...string) bool {
 	var anchor string
 	for _, code := range codes {
@@ -156,7 +157,9 @@ func IsConsistentHierarchy(codes ...string) bool {
 
 // CodeAtLevel returns the region code corresponding to the specified hierarchy level for the given region identifier.
 // It parses and validates the provided id and returns the code for LevelProvince, LevelCity, LevelDistrict, or LevelSubdistrict.
-// If parsing fails the underlying parse error is returned. If level is not one of the known levels an error is returned.
+// CodeAtLevel retrieves the region code corresponding to the specified hierarchy level from the provided region ID.
+// It returns the code for the requested level or an error.
+// An error is returned if parsing the region ID fails or if the provided level is unknown.
 func CodeAtLevel(id string, level Level) (string, error) {
 	segs, err := ParseRegionID(id)
 	if err != nil {
