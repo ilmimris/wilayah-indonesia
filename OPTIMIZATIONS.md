@@ -31,9 +31,12 @@ We've implemented several key optimizations to reduce the API latency from over 
 - Optimized data structures for better memory usage
 
 ### 6. Timeout Mechanism
-- Added 100ms timeout for n-gram matching operations
-- Prevents long-running operations from blocking API responses
-- Returns empty suggestions if timeout is exceeded
+
+- The hardcoded 100ms timeout for n-gram matching is arbitrary and should be replaced.
+- The n-gram matching path should be instrumented to collect latency metrics (P50/P95/P99) across different environments.
+- The timeout should be made configurable (e.g., via a config flag or environment variable) and optionally adaptive based on observed percentiles.
+- A safer fallback behavior should be implemented, such as extending the timeout under load or returning partial results instead of empty suggestions.
+- Recommended default values should be documented to provide a good starting point for different use cases.
 
 ### 7. Early Termination
 - Implemented early termination when high-quality matches are found
