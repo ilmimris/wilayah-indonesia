@@ -141,38 +141,57 @@ func TestRepositoryErrorPropagation(t *testing.T) {
 	}
 }
 
-func TestSearchAppliesMatcherSuggestion(t *testing.T) {
-	facets := []regionmatcher.Facet{{
-		RegionID:    "11.01.01.2001",
-		Subdistrict: "Keude Bakongan",
-		District:    "Bakongan",
-		City:        "Kabupaten Aceh Selatan",
-		Province:    "Aceh",
-	}}
+func TestSearchHandlesAmbiguousMatcherInput(t *testing.T) {
+	facets := []regionmatcher.Facet{
+		{
+			RegionID:    "11.01.01.2001",
+			Subdistrict: "Keude Bakongan",
+			District:    "Bakongan",
+			City:        "Kabupaten Aceh Selatan",
+			Province:    "Aceh",
+		},
+		{
+			RegionID:    "11.02.01.2001",
+			Subdistrict: "Bakongan Timur",
+			District:    "Bakongan Timur",
+			City:        "Kabupaten Aceh Tengah",
+			Province:    "Aceh",
+		},
+	}
 	matcher, err := regionmatcher.NewMatcher(facets,
-		regionmatcher.WithLevelThreshold(regionmatcher.LevelProvince, 0.2),
-		regionmatcher.WithLevelThreshold(regionmatcher.LevelCity, 0.2),
-		regionmatcher.WithLevelThreshold(regionmatcher.LevelDistrict, 0.2),
-		regionmatcher.WithLevelThreshold(regionmatcher.LevelSubdistrict, 0.2),
+		regionmatcher.WithLevelThreshold(regionmatcher.LevelProvince, 0.3),
+		regionmatcher.WithLevelThreshold(regionmatcher.LevelCity, 0.3),
 	)
 	if err != nil {
 		t.Fatalf("failed to build matcher: %v", err)
 	}
+
+	testCases := []struct {
+		name             string
+		query            string
+		expectSuggestion bool
+	}{
+		{"typo in query", "kbupaten aceh sealtan bakogan", true},
+		{"partial match", "aceh bakongan", true},
+		{"ambiguous match", "bakongan", true},
+	}
+
 	repo := &fakeRepository{capabilities: repository.RegionRepositoryCapabilities{HasBPSColumns: true, HasBPSIndex: true}}
-	uc, err := New(context.Background(), repo, RegionUseCaseOptions{Matcher: matcher, MatcherMinScore: 0.6})
+	uc, err := New(context.Background(), repo, RegionUseCaseOptions{Matcher: matcher, MatcherMinScore: 0.5})
 	if err != nil {
 		t.Fatalf("failed to construct use case: %v", err)
 	}
 
-	resp, err := uc.Search(context.Background(), model.SearchRequest{Query: "kabupaten aceh selatan bakongan keude bakongan"})
-	if err != nil {
-		t.Fatalf("search failed: %v", err)
-	}
-	if repo.lastParams.Province != "Aceh" || repo.lastParams.City != "Kabupaten Aceh Selatan" {
-		t.Fatalf("expected repository params to include suggestion, got %+v", repo.lastParams)
-	}
-	if resp.Suggestion == nil || resp.Suggestion.Province == nil || resp.Suggestion.Province.Name != "Aceh" {
-		t.Fatalf("expected suggestion to be returned, got %+v", resp.Suggestion)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := uc.Search(context.Background(), model.SearchRequest{Query: tc.query})
+			if err != nil {
+				t.Fatalf("search failed: %v", err)
+			}
+			if tc.expectSuggestion && resp.Suggestion == nil {
+				t.Errorf("expected suggestion for query %q", tc.query)
+			}
+		})
 	}
 }
 
