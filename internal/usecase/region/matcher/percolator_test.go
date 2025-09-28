@@ -25,7 +25,7 @@ func TestRunPercolatorSelectsBestPath(t *testing.T) {
 		LevelSubdistrict: 0.25,
 	}
 
-	suggestion, ok := runPercolator(levelMatches, weights, 0.6, 0.01)
+	suggestion, ok := runPercolator(levelMatches, weights, 0.6, 0.01, 0.03)
 	if !ok {
 		t.Fatalf("expected percolator to return suggestion")
 	}
@@ -47,7 +47,7 @@ func TestRunPercolatorReplacesInconsistentCity(t *testing.T) {
 		LevelDistrict: {{Level: LevelDistrict, Name: "Bakongan", RegionID: "11.01.01", Similarity: 0.85}},
 	}
 
-	suggestion, ok := runPercolator(levelMatches, map[Level]float64{LevelProvince: 0.4, LevelCity: 0.3, LevelDistrict: 0.3}, 0.5, 0.01)
+	suggestion, ok := runPercolator(levelMatches, map[Level]float64{LevelProvince: 0.4, LevelCity: 0.3, LevelDistrict: 0.3}, 0.5, 0.01, 0.03)
 	if !ok {
 		t.Fatalf("expected percolator to keep district and derive consistent city")
 	}
@@ -68,7 +68,7 @@ func TestRunPercolatorAllowsMissingSubdistrict(t *testing.T) {
 		},
 	}
 
-	suggestion, ok := runPercolator(levelMatches, map[Level]float64{LevelProvince: 0.3, LevelCity: 0.5, LevelSubdistrict: 0.2}, 0.5, 0.01)
+	suggestion, ok := runPercolator(levelMatches, map[Level]float64{LevelProvince: 0.3, LevelCity: 0.5, LevelSubdistrict: 0.2}, 0.5, 0.01, 0.03)
 	if !ok {
 		t.Fatalf("expected percolator to accept hierarchy without subdistrict")
 	}
@@ -90,11 +90,62 @@ func TestRunPercolatorDerivesProvinceFromDistrict(t *testing.T) {
 		},
 	}
 
-	suggestion, ok := runPercolator(levelMatches, map[Level]float64{LevelProvince: 0.2, LevelCity: 0.4, LevelDistrict: 0.4}, 0.5, 0.01)
+	suggestion, ok := runPercolator(levelMatches, map[Level]float64{LevelProvince: 0.2, LevelCity: 0.4, LevelDistrict: 0.4}, 0.5, 0.01, 0.03)
 	if !ok {
 		t.Fatalf("expected percolator to accept chain without explicit province")
 	}
 	if suggestion.District == nil || suggestion.District.RegionID != "72.01.12" {
 		t.Fatalf("unexpected district: %+v", suggestion.District)
 	}
+}
+
+func TestEvaluateCombinationBonusAndCap(t *testing.T) {
+	selection := []Match{
+		{Level: LevelProvince, Name: "Jawa Barat", RegionID: "32", Similarity: 0.9},
+		{Level: LevelCity, Name: "Kota Bandung", RegionID: "32.73", Similarity: 0.9},
+		{Level: LevelDistrict, Name: "Bandung Kidul", RegionID: "32.73.2 Kidul", Similarity: 0.9},
+		{Level: LevelSubdistrict, Name: "Wates", RegionID: "32.73.21.1004", Similarity: 0.9},
+	}
+
+	weights := map[Level]float64{
+		LevelProvince:    0.25,
+		LevelCity:        0.25,
+		LevelDistrict:    0.25,
+		LevelSubdistrict: 0.25,
+	}
+
+	baseScore := evaluateCombination(selection, weights, 0.01, 0)
+
+	t.Run("applies bonus", func(t *testing.T) {
+		scoreWithBonus := evaluateCombination(selection, weights, 0.01, 0.1)
+		if scoreWithBonus <= baseScore {
+			t.Errorf("Expected score with bonus (%f) to be greater than base score (%f)", scoreWithBonus, baseScore)
+		}
+	})
+
+	t.Run("caps score at 1.0", func(t *testing.T) {
+		scoreCapped := evaluateCombination(selection, weights, 0.01, 0.5)
+		if scoreCapped > 1.0 {
+			t.Errorf("Expected score to be capped at 1.0, but got %f", scoreCapped)
+		}
+	})
+
+	t.Run("handles zero bonus", func(t *testing.T) {
+		scoreZeroBonus := evaluateCombination(selection, weights, 0.01, 0)
+		if scoreZeroBonus != baseScore {
+			t.Errorf("Expected score with zero bonus (%f) to be equal to base score (%f)", scoreZeroBonus, baseScore)
+		}
+	})
+
+	t.Run("bonus scales with filled levels", func(t *testing.T) {
+		selectionTwoLevels := []Match{selection[0], selection[1], {}, {}}
+		scoreTwoLevels := evaluateCombination(selectionTwoLevels, weights, 0.01, 0.02)
+
+		selectionFourLevels := selection
+		scoreFourLevels := evaluateCombination(selectionFourLevels, weights, 0.01, 0.02)
+
+		if scoreFourLevels <= scoreTwoLevels {
+			t.Errorf("Expected score for four levels (%f) to be greater than for two levels (%f)", scoreFourLevels, scoreTwoLevels)
+		}
+	})
 }

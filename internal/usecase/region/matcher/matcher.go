@@ -86,6 +86,7 @@ type Matcher struct {
 	weights          map[Level]float64
 	minCombinedScore float64
 	prefixScoreBoost float64
+	matchFillBonus   float64
 }
 
 type indexEntry struct {
@@ -110,6 +111,7 @@ type matcherConfig struct {
 	minScore         float64
 	cacheSize        int
 	prefixScoreBoost float64
+	matchFillBonus   float64
 }
 
 // WithLevelThreshold returns an Option that sets the minimum similarity threshold for the given Level.
@@ -196,6 +198,17 @@ func WithPrefixScoreBoost(boost float64) Option {
 	}
 }
 
+// WithMatchFillBonus returns an Option that sets the incremental score bonus
+// for each filled (non-empty) level in a potential match combination. This bonus
+// rewards more complete matches.
+func WithMatchFillBonus(bonus float64) Option {
+	return func(cfg *matcherConfig) {
+		if bonus > 0 {
+			cfg.matchFillBonus = bonus
+		}
+	}
+}
+
 // WithCacheSize sets the matcher's cache capacity to the provided size when size is greater than zero.
 // If size is zero or negative, the existing cache capacity is left unchanged.
 func WithCacheSize(size int) Option {
@@ -224,6 +237,7 @@ var defaultWeights = map[Level]float64{
 
 const defaultMinCombinedScore = 0.6
 const defaultPrefixScoreBoost = 0.01
+const defaultMatchFillBonus = 0.03
 
 // NewMatcher constructs a Matcher from the supplied facets and functional options.
 // It builds per-level n-gram indexes from facet names and aliases (province, city,
@@ -247,6 +261,7 @@ func NewMatcher(facets []Facet, opts ...Option) (*Matcher, error) {
 		minScore:         defaultMinCombinedScore,
 		cacheSize:        1000,
 		prefixScoreBoost: defaultPrefixScoreBoost,
+		matchFillBonus:   defaultMatchFillBonus,
 	}
 	for level, value := range defaultThresholds {
 		cfg.thresholds[level] = value
@@ -394,6 +409,7 @@ func NewMatcher(facets []Facet, opts ...Option) (*Matcher, error) {
 		weights:          weights,
 		minCombinedScore: cfg.minScore,
 		prefixScoreBoost: cfg.prefixScoreBoost,
+		matchFillBonus:   cfg.matchFillBonus,
 	}, nil
 }
 
@@ -480,7 +496,7 @@ func (m *Matcher) percolateMatches(ctx context.Context, fragments []string) (Sug
 		return Suggestion{}, false
 	}
 
-	suggestion, ok := runPercolator(results, m.weights, m.minCombinedScore, m.prefixScoreBoost)
+	suggestion, ok := runPercolator(results, m.weights, m.minCombinedScore, m.prefixScoreBoost, m.matchFillBonus)
 	if !ok {
 		return Suggestion{}, false
 	}

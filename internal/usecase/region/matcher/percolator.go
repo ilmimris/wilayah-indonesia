@@ -11,7 +11,7 @@ const maxIterations = 10000 // Safety break to prevent runaway computation
 
 // runPercolator searches the cross-product of candidate matches across hierarchical levels to find the highest-scoring region suggestion that meets a minimum score.
 // It uses a depth-first search with pruning to efficiently explore combinations.
-func runPercolator(levelMatches map[Level][]Match, weights map[Level]float64, minScore float64, prefixScoreBoost float64) (Suggestion, bool) {
+func runPercolator(levelMatches map[Level][]Match, weights map[Level]float64, minScore float64, prefixScoreBoost float64, matchFillBonus float64) (Suggestion, bool) {
 	sortedLevels := make([]Level, 0, len(levelOrder))
 	for _, level := range levelOrder {
 		if _, ok := levelMatches[level]; ok {
@@ -64,7 +64,7 @@ func runPercolator(levelMatches map[Level][]Match, weights map[Level]float64, mi
 
 			normalized, ok := normalizeSelection(orderedSelection)
 			if ok {
-				score := evaluateCombination(normalized, weights, prefixScoreBoost)
+				score := evaluateCombination(normalized, weights, prefixScoreBoost, matchFillBonus)
 				if score > bestScore {
 					candidate := suggestionFromSelection(normalized)
 					if candidate.Province != nil || candidate.City != nil || candidate.District != nil {
@@ -225,8 +225,9 @@ func normalizeWithoutDistrict(selection []Match, province, city, subdistrict Mat
 // It returns a score in the range [0, 1] where higher values indicate better overall match quality.
 // Matches with empty RegionID or non-positive weight are ignored. Selections that contain multiple matched
 // evaluateCombination computes a weighted similarity score for a selection of Matches using the provided per-level weights.
-// It averages per-match similarity weighted by level, adds a small bonus when adjacent matches share a region prefix and an incremental bonus per additional filled level, and clamps the result to the range [0, 1].
-func evaluateCombination(selection []Match, weights map[Level]float64, prefixScoreBoost float64) float64 {
+// It averages per-match similarity weighted by level, adds a small bonus when adjacent matches share a region prefix,
+// applies an incremental bonus for each additional filled level, and clamps the result to a maximum of 1.0.
+func evaluateCombination(selection []Match, weights map[Level]float64, prefixScoreBoost float64, matchFillBonus float64) float64 {
 	var weightedSum float64
 	var totalWeight float64
 	filled := 0
@@ -252,7 +253,11 @@ func evaluateCombination(selection []Match, weights map[Level]float64, prefixSco
 		return 0
 	}
 	score := weightedSum / totalWeight
-	score += 0.03 * float64(filled-1)
+
+	// Add a bonus for each filled level to reward more complete matches.
+	score += matchFillBonus * float64(filled-1)
+
+	// The final score is capped at 1.0 to maintain a normalized range.
 	if score > 1 {
 		score = 1
 	}
