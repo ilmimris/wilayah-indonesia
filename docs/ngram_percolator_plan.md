@@ -23,10 +23,9 @@
    - Capture desired search thresholds, top-k counts per level, and timeout budget in `internal/config` so behaviour is tunable.
 
 2. **Serialized index bootstrap**
-   - Extend the ingestor pipeline (see `cmd/ingestor/main.go`) so it reads `data/wilayah.sql`, materialises per-level (`province`, `city`, `district`, `subdistrict`) n-gram indices, and writes each snapshot to a Pickle file.
-   - Store metadata alongside the Pickle payloads (dataset version, build timestamp) so stale caches can be invalidated deterministically.
-   - Ensure the ingestor overwrites Pickle snapshots after every successful rebuild while the API process simply loads the most recent artefacts.
-
+   - Extend the ingestor pipeline (see `cmd/ingestor/main.go`) so it reads `data/wilayah.sql`, materialises per-level (`province`, `city`, `district`, `subdistrict`) n-gram indices, and writes each snapshot to a gob (or JSON/protobuf) file with a checksum.
+   - Store metadata alongside the payloads (dataset version, build timestamp, checksum) so stale caches can be invalidated deterministically.
+   - Ensure the ingestor overwrites snapshots after every successful rebuild while the API process simply loads the most recent artefacts.
 3. **Hierarchy utilities**
    - Add helper in a new `pkg/regionhierarchy` (or similar) to parse IDs into `{Province, City, District, Subdistrict}` segments and compare prefixes.
    - Provide helpers to compute parent keys (`VV`, `VV.XX`, `VV.XX.YY`) and to detect mismatches.
