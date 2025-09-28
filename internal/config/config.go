@@ -3,9 +3,13 @@ package config
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -18,24 +22,26 @@ import (
 	"github.com/ilmimris/wilayah-indonesia/internal/gateway/sqlnormalize"
 	"github.com/ilmimris/wilayah-indonesia/internal/model"
 	"github.com/ilmimris/wilayah-indonesia/internal/ngramcache"
-	"github.com/ilmimris/wilayah-indonesia/internal/repository/duckdb"
+	duckdbrepo "github.com/ilmimris/wilayah-indonesia/internal/repository/duckdb"
 	sharederrors "github.com/ilmimris/wilayah-indonesia/internal/shared/errors"
 	ingestionusecase "github.com/ilmimris/wilayah-indonesia/internal/usecase/ingestion"
 	regionusecase "github.com/ilmimris/wilayah-indonesia/internal/usecase/region"
 	regionmatcher "github.com/ilmimris/wilayah-indonesia/internal/usecase/region/matcher"
 	"github.com/ilmimris/wilayah-indonesia/pkg/regionhierarchy"
 
-	_ "github.com/marcboeker/go-duckdb/v2"
+	duckdb "github.com/marcboeker/go-duckdb/v2"
 )
 
 // Options groups runtime configuration flags consumed by bootstrap routines.
 type Options struct {
-	DBPath    string
-	Port      string
-	Features  FeatureFlags
-	Ingestion IngestionPaths
-	ReadOnly  bool
-	Matcher   MatcherConfig
+	DBPath       string
+	Port         string
+	Features     FeatureFlags
+	Ingestion    IngestionPaths
+	ReadOnly     bool
+	Matcher      MatcherConfig
+	MaxOpenConns int
+	MaxIdleConns int
 }
 
 // FeatureFlags exposes optional toggles used across the application.
@@ -157,15 +163,90 @@ func NewDuckDB(ctx context.Context, opts Options) (*sql.DB, error) {
 	if path == "" {
 		path = "data/regions.duckdb"
 	}
-	connStr := path
+
+	var builder strings.Builder
+	builder.WriteString(path)
 	if opts.ReadOnly {
-		connStr = path + "?access_mode=read_only"
+		builder.WriteString("?access_mode=read_only")
 	}
-	conn, err := sql.Open("duckdb", connStr)
+	dsn := builder.String()
+
+	connector, err := duckdb.NewConnector(dsn, func(execer driver.ExecerContext) error {
+		bootstrapCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		mandatory := []string{
+			"SET scalar_subquery_error_on_multiple_rows=false",
+			"LOAD fts",
+		}
+		for _, stmt := range mandatory {
+			if _, execErr := execer.ExecContext(bootstrapCtx, stmt, nil); execErr != nil {
+				return fmt.Errorf("duckdb init statement failed (%s): %w", stmt, execErr)
+			}
+		}
+		optional := []string{"LOAD fuzzystrmatch"}
+		for _, stmt := range optional {
+			if _, execErr := execer.ExecContext(bootstrapCtx, stmt, nil); execErr != nil {
+				continue
+			}
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, sharederrors.Wrap(sharederrors.CodeDatabaseFailure, "failed to open database", err)
+		return nil, sharederrors.Wrap(sharederrors.CodeDatabaseFailure, "failed to create duckdb connector", err)
 	}
-	return conn, nil
+
+	db := sql.OpenDB(connector)
+
+	maxOpen := opts.MaxOpenConns
+	if maxOpen <= 0 {
+		maxOpen = runtime.NumCPU() * 4
+		if maxOpen < 10 {
+			maxOpen = 10
+		}
+	}
+	maxIdle := opts.MaxIdleConns
+	if maxIdle <= 0 || maxIdle > maxOpen {
+		maxIdle = maxOpen
+	}
+
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
+	db.SetConnMaxLifetime(0)
+	db.SetConnMaxIdleTime(0)
+
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
+		return nil, sharederrors.Wrap(sharederrors.CodeDatabaseFailure, "failed to ping database", err)
+	}
+
+	bootstrapCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := warmDuckDBPool(bootstrapCtx, db, maxIdle); err != nil {
+		db.Close()
+		return nil, sharederrors.Wrap(sharederrors.CodeDatabaseFailure, "failed to warm database pool", err)
+	}
+
+	return db, nil
+}
+
+func warmDuckDBPool(ctx context.Context, db *sql.DB, target int) error {
+	if target <= 0 {
+		return nil
+	}
+	for i := 0; i < target; i++ {
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			return err
+		}
+		if _, err := conn.ExecContext(ctx, "SELECT 1"); err != nil {
+			conn.Close()
+			return err
+		}
+		if err := conn.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // NewFiber creates a new Fiber application instance without any middleware, ready for further configuration.
@@ -241,7 +322,7 @@ func BootstrapHTTP(ctx context.Context, opts Options) (HTTPBootstrap, error) {
 		return HTTPBootstrap{}, err
 	}
 
-	repo := duckdb.NewRegionRepository(db)
+	repo := duckdbrepo.NewRegionRepository(db)
 	uc, err := regionusecase.New(ctx, repo, regionusecase.RegionUseCaseOptions{Logger: logger, Matcher: matcherInstance, MatcherMinScore: opts.Matcher.MinCombinedScore})
 	if err != nil {
 		db.Close()
@@ -295,7 +376,7 @@ func BootstrapWorker(ctx context.Context, opts Options) (WorkerBootstrap, error)
 		return WorkerBootstrap{}, err
 	}
 
-	adminRepo := duckdb.NewAdminRepository(db)
+	adminRepo := duckdbrepo.NewAdminRepository(db)
 	loader := filesystem.FileLoader{}
 	normalizer := sqlnormalize.MySQLStripper{}
 	uc := ingestionusecase.New(loader, normalizer, adminRepo, ingestionusecase.Options{Logger: logger})
