@@ -51,7 +51,8 @@ func WithN[T comparable](n int) Option[T] {
 	}
 }
 
-// WithPadLen sets the number of padding characters to apply to each side.
+// WithPadLen returns an Option that configures the number of padding characters applied to each side of indexed keys.
+// The provided padLen must be >= 0; if it is negative the Option returns an error.
 func WithPadLen[T comparable](padLen int) Option[T] {
 	return func(ng *NGram[T]) error {
 		if padLen < 0 {
@@ -63,7 +64,9 @@ func WithPadLen[T comparable](padLen int) Option[T] {
 }
 
 // WithPadChar returns an Option that sets the rune used to build the padding string for the index.
-// If `padChar` is 0 the option returns an error.
+// WithPadChar returns an Option that sets the padding character used when building
+// padded n-gram keys for the index. It validates that padChar is not the zero rune
+// and returns an error if validation fails.
 func WithPadChar[T comparable](padChar rune) Option[T] {
 	return func(ng *NGram[T]) error {
 		if padChar == 0 {
@@ -79,7 +82,7 @@ func WithPadChar[T comparable](padChar rune) Option[T] {
 // When the item type T is a string, this also configures the index to normalize string queries
 // WithKey returns an Option that sets the function used to extract a string key from an item.
 // It validates that the provided key is non-nil and assigns it to the index. If the item type T is
-// string, the option also configures the index to apply the same key function to query strings.
+// function to incoming query strings via ng.normalizeQuery.
 func WithKey[T comparable](key func(T) string) Option[T] {
 	return func(ng *NGram[T]) error {
 		if key == nil {
@@ -124,7 +127,13 @@ type NGram[T comparable] struct {
 // The function applies each Option in order and returns an error if any option fails. It establishes sensible defaults
 // (N = 3, warp = 1.0, threshold = 0, padChar = '$', padLen defaults to N-1 when unset) and initializes internal
 // structures including gram buckets, item length/map, item set, and a results cache (default size 1000). If an initial
-// items slice is non-empty the items are indexed before the constructed index is returned.
+// New creates an NGram index configured for fuzzy n-gram similarity searches.
+// 
+// The function constructs an NGram with sensible defaults (threshold 0, warp 1.0, N=3,
+// padChar '$', padLen computed as N-1 when unset), initializes internal maps and a
+// query cache, applies the provided Option functions in order, and validates options.
+// If padLen remains >= N after options, New returns an error. If a non-empty items
+// slice is provided, those items are indexed before the constructed index is returned.
 func New[T comparable](items []T, options ...Option[T]) (*NGram[T], error) {
 	ng := &NGram[T]{
 		threshold:      0,
@@ -468,7 +477,8 @@ func (ng *NGram[T]) itemsSharingFromGrams(grams []string) map[T]int {
 
 // defaultKey returns a string representation for item.
 // defaultKey returns the string representation of item.
-// If item is a string it is returned unchanged; if it implements fmt.Stringer its String method is used; otherwise fmt.Sprint is used.
+// defaultKey produces a string key for the given item.
+// If the item is a string, it is returned unchanged; if it implements fmt.Stringer its String method is used; otherwise fmt.Sprint is used.
 func defaultKey[T comparable](item T) string {
 	switch v := any(item).(type) {
 	case string:

@@ -52,7 +52,7 @@ type regionUseCase struct {
 // uses opts.Logger or slog.Default() when nil, and constructs a limit normalizer from
 // opts.DefaultLimit and opts.MaxLimit. If opts.MatcherMinScore is zero or negative,
 // a default min score of 0.6 is used. The returned use case will include opts.Matcher
-// and the resolved matcher minimum score.
+// to 0.6 when the provided value is less than or equal to zero.
 func New(ctx context.Context, repo repository.RegionRepository, opts RegionUseCaseOptions) (RegionUseCase, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -266,7 +266,8 @@ func (uc *regionUseCase) validateDatasetOptions(opts model.SearchOptions) error 
 // Each resulting response contains the region fields (ID, Subdistrict, District, City, Province,
 // mapToResponses converts a slice of entity.RegionWithScore to a slice of model.RegionResponse,
 // copying ID, Subdistrict, District, City, Province, PostalCode, FullText and BPS, and sets
-// Scores on the response when the source Score is non-nil.
+// mapToResponses converts a slice of entity.RegionWithScore into a slice of model.RegionResponse.
+// If an item's Score is non-nil, it is copied into the corresponding response's Scores field.
 func mapToResponses(items []entity.RegionWithScore) []model.RegionResponse {
 	responses := make([]model.RegionResponse, 0, len(items))
 	for _, item := range items {
@@ -295,7 +296,12 @@ func mapToResponses(items []entity.RegionWithScore) []model.RegionResponse {
 // convertSuggestion converts a regionmatcher.Suggestion into a *model.Suggestion suitable for API responses.
 // If the input contains no province/city/district/subdistrict matches it returns nil.
 // When a higher-level match (province, city, district) is missing, it attempts to infer it from available lower-level
-// matches by resolving their region codes via the region hierarchy.
+// convertSuggestion converts a regionmatcher.Suggestion into a *model.Suggestion suitable for API responses.
+// If the input contains no province/city/district/subdistrict matches, it returns nil.
+// The returned suggestion copies Strategy and Score and maps each non-nil match into a SuggestedMatch.
+// When a higher-level match (Province, City, District) is missing, the function attempts to infer it from
+// available lower-level matches by resolving the corresponding region code via regionhierarchy.CodeAtLevel
+// and preserving the similarity score from the source match.
 func convertSuggestion(s regionmatcher.Suggestion) *model.Suggestion {
 	if s.Province == nil && s.City == nil && s.District == nil && s.Subdistrict == nil {
 		return nil
@@ -359,7 +365,7 @@ func convertSuggestion(s regionmatcher.Suggestion) *model.Suggestion {
 
 // sanitizeFTSQuery removes single-quote and double-quote characters from q.
 // sanitizeFTSQuery removes all single-quote (') and double-quote (") characters from the input string.
-// It is used to clean user-provided full-text search queries before they are processed by the search layer.
+// sanitizeFTSQuery removes single-quote and double-quote characters from the input string to produce a cleaned query for full-text search.
 func sanitizeFTSQuery(q string) string {
 	return strings.Map(func(r rune) rune {
 		switch r {

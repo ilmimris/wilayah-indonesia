@@ -48,7 +48,15 @@ type parsedRecord struct {
 // 
 // The function returns an error if the file cannot be read, if any region code is
 // invalid, if referential integrity is broken when resolving parent regions, or if
-// (for example when a required parent region is missing).
+// BuildSnapshotFromWilayah reads a wilayah SQL dump at path and constructs a Snapshot
+// that contains provenance metadata and validated, sorted n-gram region facets.
+// 
+// The returned Snapshot.Metadata includes the source path, a SHA-256 hash of the
+// input contents, UTC generation time, and per-level record counts. The function
+// parses SQL tuple entries, validates region codes and parent relationships, and
+// builds facets for subdistricts with their province, city, and district names.
+// An error is returned if the file cannot be read, the input cannot be scanned,
+// a region code is invalid, or required parent regions are missing.
 func BuildSnapshotFromWilayah(path string) (Snapshot, error) {
 	contents, err := os.ReadFile(path)
 	if err != nil {
@@ -115,7 +123,9 @@ func BuildSnapshotFromWilayah(path string) (Snapshot, error) {
 // It groups input records by hierarchy level, constructs a Facet for each subdistrict using the
 // corresponding province, city, and district names, and returns an error if any required parent
 // region is missing (the error names the missing parent and the affected region). The returned
-// facets are sorted by Province, City, District, Subdistrict, then RegionID.
+// buildFacets groups parsed records by hierarchy level, validates that every subdistrict has a corresponding province, city, and district parent, constructs a Facet for each subdistrict, and returns the facets sorted by Province, City, District, Subdistrict, then RegionID.
+// 
+// If any required parent (province, city, or district) is missing for a subdistrict, an error naming the missing parent and affected region is returned.
 func buildFacets(records map[string]parsedRecord) ([]regionmatcher.Facet, error) {
 	provinces := make(map[string]string)
 	cities := make(map[string]string)
@@ -179,7 +189,10 @@ func buildFacets(records map[string]parsedRecord) ([]regionmatcher.Facet, error)
 }
 
 // WriteSnapshot writes the given Snapshot to dest as indented JSON and atomically replaces any existing file.
-// It requires dest to be non-empty. On failure it returns an error describing the cause (ensuring the directory, marshaling the snapshot, writing the temporary file, or renaming it into place).
+// WriteSnapshot writes the provided Snapshot as indented JSON to dest, atomically replacing any existing file.
+// It requires dest to be non-empty. The destination directory is created if needed; the function writes to a temporary
+// file (dest + ".tmp") and renames it into place. On failure an error is returned describing the cause (ensuring the
+// directory, marshaling the snapshot, writing the temporary file, or renaming it into place).
 func WriteSnapshot(snapshot Snapshot, dest string) error {
 	if dest == "" {
 		return fmt.Errorf("destination path is required for matcher snapshot")
@@ -203,6 +216,7 @@ func WriteSnapshot(snapshot Snapshot, dest string) error {
 
 // LoadSnapshot reads and unmarshals a Snapshot JSON file from the given path.
 // LoadSnapshot reads a JSON snapshot file from the provided filesystem path and unmarshals it into a Snapshot.
+// LoadSnapshot reads a JSON snapshot file from the given path and unmarshals it into a Snapshot.
 // It returns an error if path is empty, the file cannot be read, or the contents cannot be parsed as a Snapshot.
 func LoadSnapshot(path string) (Snapshot, error) {
 	if path == "" {

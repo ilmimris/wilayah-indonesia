@@ -76,7 +76,17 @@ func (s Segments) CodeForLevel(level Level) string {
 // corresponding depth. If a segment for the reported depth is empty, that segment is set to the
 // trimmed input to preserve boundary consistency.
 // 
-// the identifier has unsupported depth (more than four dot-separated parts).
+// ParseRegionID parses an Indonesian region identifier into its hierarchical Segments.
+// 
+// It trims surrounding whitespace, validates the identifier against the expected
+// VV(.XX(.YY(.ZZZZ)?)?) pattern, and returns a Segments value populated for the
+// corresponding depth: one part sets Province, two parts set Province and City,
+// three parts set Province, City and District, and four parts set Province, City,
+// District and Subdistrict. Returns an error for empty input, a pattern mismatch,
+// or unsupported depth (more than four dot-separated parts).
+// 
+// On success the returned Segments.Raw contains the trimmed input and the method
+// returns the constructed Segments and a nil error.
 func ParseRegionID(id string) (Segments, error) {
 	trimmed := strings.TrimSpace(id)
 	if trimmed == "" {
@@ -122,7 +132,8 @@ func ParseRegionID(id string) (Segments, error) {
 // using '.' as the segment separator.
 // 
 // It returns true for exact equality and for cases where the child begins with the parent
-// than parent requires the next character to be '.' to ensure a proper boundary.
+// SharePrefix reports whether child has parent as an administrative prefix.
+// It trims surrounding whitespace and returns true if child equals parent or if child begins with parent immediately followed by a '.' separator; otherwise it returns false.
 func SharePrefix(parent, child string) bool {
 	parent = strings.TrimSpace(parent)
 	child = strings.TrimSpace(child)
@@ -149,7 +160,8 @@ func SharePrefix(parent, child string) bool {
 // anchor; each subsequent non-empty code must share a valid hierarchical prefix with the
 // anchor in either direction. The anchor is updated to the longest code seen so far.
 // IsConsistentHierarchy reports whether the provided region codes can coexist in a single hierarchical chain.
-// It returns true if every non-empty code (after trimming whitespace) is either an exact match or a dot-delimited hierarchical prefix of another code, and false if any pair is incompatible.
+// IsConsistentHierarchy reports whether the provided region codes can coexist in a single administrative chain.
+// It ignores empty strings and surrounding whitespace; every non-empty code must be either equal to or a dot-delimited hierarchical prefix of at least one other non-empty code.
 func IsConsistentHierarchy(codes ...string) bool {
 	var anchor string
 	for _, code := range codes {
@@ -175,6 +187,8 @@ func IsConsistentHierarchy(codes ...string) bool {
 // It parses and validates the provided id and returns the code for LevelProvince, LevelCity, LevelDistrict, or LevelSubdistrict.
 // CodeAtLevel retrieves the region code corresponding to the specified hierarchy level from the provided region ID.
 // It returns the code for the requested level or an error.
+// CodeAtLevel returns the canonical code for the specified hierarchy level from a region ID.
+// It parses the given region ID and yields the province, city, district, or subdistrict code for the requested level.
 // An error is returned if parsing the region ID fails or if the provided level is unknown.
 func CodeAtLevel(id string, level Level) (string, error) {
 	segs, err := ParseRegionID(id)

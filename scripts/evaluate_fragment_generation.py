@@ -1,9 +1,19 @@
-
 import json
 import re
 import string
 
 def normalize(value: str) -> str:
+    """
+    Normalize a text value into a compact, canonical tokenized form.
+    
+    The function trims leading and trailing whitespace, limits input to the first 100 characters, lowercases the text, replaces punctuation and other non-word characters with spaces, collapses consecutive whitespace into single spaces, and returns at most the first 10 whitespace-separated tokens joined by single spaces.
+    
+    Parameters:
+        value (str): Input string to normalize.
+    
+    Returns:
+        str: The normalized string; returns an empty string if the trimmed input is empty.
+    """
     value = value.strip()
     if not value:
         return ""
@@ -23,6 +33,18 @@ def normalize(value: str) -> str:
     return " ".join(tokens)
 
 def candidate_fragments(query: str, word_combo_size: int) -> list[str]:
+    """
+    Generate a list of candidate fragment strings derived from a query for use in matching or search.
+    
+    The returned fragments are normalized (lowercased, punctuation removed, whitespace collapsed), unique, and ordered by descending length. For long queries (more than 100 characters) this returns up to the first five normalized words from the normalized prefix of the query. Otherwise the function extracts fragments from the whole query (including splits on common separators, individual words, and contiguous multi-word phrases up to `word_combo_size`), and returns up to five distinct fragments.
+    
+    Parameters:
+        query (str): The input query text to derive fragments from.
+        word_combo_size (int): Maximum number of words to combine when producing multi-word fragments.
+    
+    Returns:
+        list[str]: A list of up to five normalized, unique fragment strings sorted by length (longest first).
+    """
     if len(query) > 100:
         words = normalize(query[:50]).split()
         if len(words) > 5:
@@ -32,6 +54,12 @@ def candidate_fragments(query: str, word_combo_size: int) -> list[str]:
     seen = set()
     
     def add(text: str):
+        """
+        Add a normalized, non-empty fragment to the enclosing `seen` set if it is not already present.
+        
+        Parameters:
+            text (str): Candidate fragment text to normalize and add.
+        """
         normalized = normalize(text)
         if not normalized:
             return
@@ -78,6 +106,11 @@ def candidate_fragments(query: str, word_combo_size: int) -> list[str]:
     return fragments
 
 def main():
+    """
+    Run a diagnostic that compares 2-word vs 3-word fragment generation for a sample of place-name queries and report any differences.
+    
+    Reads matcher_snapshot.json (falling back to an empty facets list on read/parse error), builds a representative set of queries from sampled facet entries plus known complex names, generates fragments using candidate_fragments with word sizes 2 and 3, and prints a summary of queries where 3-word fragments are missing from the 2-word results along with example cases and a recommendation.
+    """
     try:
         with open('/Users/ilmimris/Proj/external/ilmimris/wilayah-indonesia/data/matcher_snapshot.json', 'r') as f:
             data = json.load(f)
