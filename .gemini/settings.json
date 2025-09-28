@@ -1,0 +1,17 @@
+{
+    "context": {
+        "fileName": [
+            "AGENTS.md",
+            "CONTEXT.md",
+            "GEMINI.md"
+        ],
+        "includeDirectories": [
+            ".",
+            "docs"
+        ],
+        "loadFromIncludeDirectories": true,
+        "fileFiltering": {
+            "respectGitIgnore": false
+        }
+    }
+}
