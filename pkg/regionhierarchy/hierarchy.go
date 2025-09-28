@@ -36,6 +36,22 @@ func (s Segments) Level() Level {
 	return s.level
 }
 
+// LevelInt returns the integer representation of the hierarchy depth.
+func (s Segments) LevelInt() int {
+	switch s.level {
+	case LevelProvince:
+		return 1
+	case LevelCity:
+		return 2
+	case LevelDistrict:
+		return 3
+	case LevelSubdistrict:
+		return 4
+	default:
+		return 0
+	}
+}
+
 // CodeForLevel returns the identifier corresponding to the requested hierarchy level.
 func (s Segments) CodeForLevel(level Level) string {
 	switch level {
