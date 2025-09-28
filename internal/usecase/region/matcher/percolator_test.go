@@ -25,7 +25,7 @@ func TestRunPercolatorSelectsBestPath(t *testing.T) {
 		LevelSubdistrict: 0.25,
 	}
 
-	suggestion, ok := runPercolator(levelMatches, weights, 0.6)
+	suggestion, ok := runPercolator(levelMatches, weights, 0.6, 0.01)
 	if !ok {
 		t.Fatalf("expected percolator to return suggestion")
 	}
@@ -47,7 +47,7 @@ func TestRunPercolatorReplacesInconsistentCity(t *testing.T) {
 		LevelDistrict: {{Level: LevelDistrict, Name: "Bakongan", RegionID: "11.01.01", Similarity: 0.85}},
 	}
 
-	suggestion, ok := runPercolator(levelMatches, map[Level]float64{LevelProvince: 0.4, LevelCity: 0.3, LevelDistrict: 0.3}, 0.5)
+	suggestion, ok := runPercolator(levelMatches, map[Level]float64{LevelProvince: 0.4, LevelCity: 0.3, LevelDistrict: 0.3}, 0.5, 0.01)
 	if !ok {
 		t.Fatalf("expected percolator to keep district and derive consistent city")
 	}
@@ -68,7 +68,7 @@ func TestRunPercolatorAllowsMissingSubdistrict(t *testing.T) {
 		},
 	}
 
-	suggestion, ok := runPercolator(levelMatches, map[Level]float64{LevelProvince: 0.3, LevelCity: 0.5, LevelSubdistrict: 0.2}, 0.5)
+	suggestion, ok := runPercolator(levelMatches, map[Level]float64{LevelProvince: 0.3, LevelCity: 0.5, LevelSubdistrict: 0.2}, 0.5, 0.01)
 	if !ok {
 		t.Fatalf("expected percolator to accept hierarchy without subdistrict")
 	}
@@ -90,7 +90,7 @@ func TestRunPercolatorDerivesProvinceFromDistrict(t *testing.T) {
 		},
 	}
 
-	suggestion, ok := runPercolator(levelMatches, map[Level]float64{LevelProvince: 0.2, LevelCity: 0.4, LevelDistrict: 0.4}, 0.5)
+	suggestion, ok := runPercolator(levelMatches, map[Level]float64{LevelProvince: 0.2, LevelCity: 0.4, LevelDistrict: 0.4}, 0.5, 0.01)
 	if !ok {
 		t.Fatalf("expected percolator to accept chain without explicit province")
 	}

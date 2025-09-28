@@ -85,6 +85,7 @@ type Matcher struct {
 	timeout          time.Duration
 	weights          map[Level]float64
 	minCombinedScore float64
+	prefixScoreBoost float64
 }
 
 type indexEntry struct {
@@ -101,13 +102,14 @@ type indexEntry struct {
 type Option func(*matcherConfig)
 
 type matcherConfig struct {
-	thresholds   map[Level]float64
-	ngramN       int
-	parallelTopK int
-	timeout      time.Duration
-	weights      map[Level]float64
-	minScore     float64
-	cacheSize    int
+	thresholds       map[Level]float64
+	ngramN           int
+	parallelTopK     int
+	timeout          time.Duration
+	weights          map[Level]float64
+	minScore         float64
+	cacheSize        int
+	prefixScoreBoost float64
 }
 
 // WithLevelThreshold returns an Option that sets the minimum similarity threshold for the given Level.
@@ -173,14 +175,23 @@ func WithPercolatorWeights(weights map[Level]float64) Option {
 	}
 }
 
-// WithMinCombinedScore returns an Option that sets the minimum combined percolator score
-// required for a parallel suggestion to be accepted. If the provided score is less than
 // WithMinCombinedScore returns an Option that sets the minimum combined percolator score used when evaluating suggestions.
 // If score is less than or equal to zero the option is ignored.
 func WithMinCombinedScore(score float64) Option {
 	return func(cfg *matcherConfig) {
 		if score > 0 {
 			cfg.minScore = score
+		}
+	}
+}
+
+// WithPrefixScoreBoost returns an Option that sets the score boost for shared prefixes.
+// This boost is a small bonus added when adjacent region matches (e.g., city and district)
+// share a common region code prefix.
+func WithPrefixScoreBoost(boost float64) Option {
+	return func(cfg *matcherConfig) {
+		if boost > 0 {
+			cfg.prefixScoreBoost = boost
 		}
 	}
 }
@@ -212,6 +223,7 @@ var defaultWeights = map[Level]float64{
 }
 
 const defaultMinCombinedScore = 0.6
+const defaultPrefixScoreBoost = 0.01
 
 // NewMatcher constructs a Matcher from the supplied facets and functional options.
 // It builds per-level n-gram indexes from facet names and aliases (province, city,
@@ -232,8 +244,9 @@ func NewMatcher(facets []Facet, opts ...Option) (*Matcher, error) {
 		parallelTopK: 5,
 		timeout:      100 * time.Millisecond,
 		weights:      make(map[Level]float64, len(defaultWeights)),
-		minScore:     defaultMinCombinedScore,
-		cacheSize:    1000,
+		minScore:         defaultMinCombinedScore,
+		cacheSize:        1000,
+		prefixScoreBoost: defaultPrefixScoreBoost,
 	}
 	for level, value := range defaultThresholds {
 		cfg.thresholds[level] = value
@@ -380,6 +393,7 @@ func NewMatcher(facets []Facet, opts ...Option) (*Matcher, error) {
 		timeout:          cfg.timeout,
 		weights:          weights,
 		minCombinedScore: cfg.minScore,
+		prefixScoreBoost: cfg.prefixScoreBoost,
 	}, nil
 }
 
@@ -466,7 +480,7 @@ func (m *Matcher) percolateMatches(ctx context.Context, fragments []string) (Sug
 		return Suggestion{}, false
 	}
 
-	suggestion, ok := runPercolator(results, m.weights, m.minCombinedScore)
+	suggestion, ok := runPercolator(results, m.weights, m.minCombinedScore, m.prefixScoreBoost)
 	if !ok {
 		return Suggestion{}, false
 	}
