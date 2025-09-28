@@ -9,3 +9,4 @@ scripts/*
 tmp/*
 docs/*
 helm-chart/*
+*.deb

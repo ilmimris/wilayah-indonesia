@@ -81,7 +81,7 @@ docker-build:
 # Run Docker container
 .PHONY: docker-run
 docker-run:
-	docker run   -p 8080:8080 $(BINARY)
+	docker run --rm -e MATCHER_SNAPSHOT_PATH=$(MATCHER_SNAPSHOT_PATH) -e DB_PATH=$(DB_FILE) -p 8080:8080 $(BINARY)
 
 # Help
 .PHONY: help

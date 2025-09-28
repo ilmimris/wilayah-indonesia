@@ -92,7 +92,7 @@ type MatcherConfig struct {
 // per-level thresholds (province: 0.4, city: 0.4, district: 0.45, subdistrict: 0.45) and weights
 // (province: 0.2, city: 0.3, district: 0.25, subdistrict: 0.25) where missing, MinCombinedScore to 0.6,
 // applyMatcherDefaults populates zero-valued fields on cfg with sane defaults for matcher behaviour.
-// 
+//
 // It sets a default snapshot path, timeout, parallel top-K, per-level thresholds and weights, minimum
 // combined score, and cache size when those fields are not already provided. Existing non-zero values
 // on cfg are preserved.
@@ -176,14 +176,16 @@ func NewDuckDB(ctx context.Context, opts Options) (*sql.DB, error) {
 		defer cancel()
 		mandatory := []string{
 			"SET scalar_subquery_error_on_multiple_rows=false",
-			"LOAD fts",
+			"INSTALL fts; LOAD fts;",
 		}
 		for _, stmt := range mandatory {
 			if _, execErr := execer.ExecContext(bootstrapCtx, stmt, nil); execErr != nil {
 				return fmt.Errorf("duckdb init statement failed (%s): %w", stmt, execErr)
 			}
 		}
-		optional := []string{"LOAD fuzzystrmatch"}
+		// Optional statements that may fail on older DuckDB versions
+		// but are not critical for operation
+		optional := []string{}
 		for _, stmt := range optional {
 			if _, execErr := execer.ExecContext(bootstrapCtx, stmt, nil); execErr != nil {
 				continue
@@ -276,7 +278,7 @@ func NewFiber() (*fiber.App, error) {
 // applies matcher defaults, attempts to load and initialize the region matcher, opens a DuckDB
 // connection, constructs the region use case and HTTP routes (including a /healthz endpoint),
 // and returns the assembled Fiber app, DB handle, logger, and matcher configuration.
-// 
+//
 // If matcher snapshot loading or matcher initialization fails the function continues with a nil
 // matcher while logging a warning. If database opening, use-case construction, or Fiber creation
 // fails the database handle is closed and an error is returned.
