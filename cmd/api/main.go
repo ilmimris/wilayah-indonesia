@@ -18,7 +18,12 @@ import (
 // It sets a temporary bootstrap logger, populates config.Options with a MatcherConfig and other defaults,
 // invokes config.BootstrapHTTP, and—if the bootstrap provides a logger—sets it as the default. The server
 // listens on PORT (defaults to "8080" when empty). If bootstrapping or server startup fails, main logs an
-// error and exits with status 1. The bootstrapped database is closed on exit.
+// main is the program entry point. It sets up a temporary bootstrap logger, requires
+// MATCHER_SNAPSHOT_PATH, constructs runtime options (including matcher settings such
+// as snapshot path, thresholds, timeout, and parallel top-K), bootstraps the HTTP
+// application, replaces the default logger if provided, defers closing the bootstrapped
+// database, and starts the HTTP server on PORT (default "8080"). On fatal errors it
+// logs the problem and exits with status 1.
 func main() {
 	bootstrapLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	slog.SetDefault(bootstrapLogger)

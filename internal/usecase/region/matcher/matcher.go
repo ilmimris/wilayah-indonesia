@@ -117,7 +117,9 @@ type matcherConfig struct {
 }
 
 // WithLevelThreshold returns an Option that sets the minimum similarity threshold for the given Level.
-// The threshold is interpreted as a similarity score (typically in the range 0.0–1.0) used to accept or reject matches for that level.
+// WithLevelThreshold sets the similarity threshold used to accept matches for the given level.
+// The threshold is a similarity score (recommended range 0.0–1.0); matches for that level with
+// similarity below this value will be rejected when scoring candidates.
 func WithLevelThreshold(level Level, threshold float64) Option {
 	return func(cfg *matcherConfig) {
 		cfg.thresholds[level] = threshold
@@ -127,7 +129,8 @@ func WithLevelThreshold(level Level, threshold float64) Option {
 // WithNGramSize sets the n-gram window size used to build per-level indexes.
 // A value greater than 0 replaces the default n-gram size in the matcher configuration;
 // WithNGramSize returns an Option that sets the n-gram window size used when building per-level indexes.
-// Non-positive values are ignored.
+// WithNGramSize sets the n-gram size used by the matcher when indexing and searching.
+// If n is greater than zero, the configuration's ngramN is updated; non-positive values are ignored.
 func WithNGramSize(n int) Option {
 	return func(cfg *matcherConfig) {
 		if n > 0 {
@@ -139,7 +142,8 @@ func WithNGramSize(n int) Option {
 // WithParallelTopK returns an Option that sets the maximum number of matches retained per level
 // during the parallel percolation pass. If k is not greater than zero, the existing configuration
 // WithParallelTopK sets the per-level top-k candidate limit used during parallel searches.
-// Only positive k values are applied; non-positive values leave the existing configuration unchanged.
+// WithParallelTopK sets the number of top results to request per parallel per-level fragment search.
+// If k is not greater than zero the configuration is left unchanged.
 func WithParallelTopK(k int) Option {
 	return func(cfg *matcherConfig) {
 		if k > 0 {
@@ -150,6 +154,7 @@ func WithParallelTopK(k int) Option {
 
 // WithSuggestionTimeout returns an Option that sets the per-query matching timeout budget.
 // WithSuggestionTimeout sets the per-query suggestion timeout in the matcher configuration.
+// WithSuggestionTimeout returns an Option that sets the per-suggestion timeout used by the Matcher.
 // If d is greater than zero the timeout is set to d; non-positive durations leave the timeout unchanged.
 func WithSuggestionTimeout(d time.Duration) Option {
 	return func(cfg *matcherConfig) {
@@ -161,7 +166,11 @@ func WithSuggestionTimeout(d time.Duration) Option {
 
 // WithPercolatorWeights returns an Option that applies per-level percolator weights to the matcher configuration.
 // The provided map's keys are Levels and values are non-negative weights. An empty map is ignored and any
-// entries with negative weights are skipped; valid weights overwrite or populate cfg.weights.
+// WithPercolatorWeights returns an Option that sets percolator weights from the provided map.
+ // 
+ // The provided map's keys are levels and values are weights. Negative weights are ignored;
+ // non-negative weights overwrite or populate entries in the matcher's configuration. If the
+ // matcherConfig's weights map is nil, it will be allocated. An empty input map is a no-op.
 func WithPercolatorWeights(weights map[Level]float64) Option {
 	return func(cfg *matcherConfig) {
 		if len(weights) == 0 {
@@ -180,7 +189,8 @@ func WithPercolatorWeights(weights map[Level]float64) Option {
 }
 
 // WithMinCombinedScore returns an Option that sets the minimum combined percolator score used when evaluating suggestions.
-// If score is less than or equal to zero the option is ignored.
+// WithMinCombinedScore sets the minimum combined score threshold used by the matcher.
+// If the provided score is less than or equal to zero the option is ignored.
 func WithMinCombinedScore(score float64) Option {
 	return func(cfg *matcherConfig) {
 		if score > 0 {
@@ -191,7 +201,8 @@ func WithMinCombinedScore(score float64) Option {
 
 // WithPrefixScoreBoost returns an Option that sets the score boost for shared prefixes.
 // This boost is a small bonus added when adjacent region matches (e.g., city and district)
-// share a common region code prefix.
+// WithPrefixScoreBoost sets the prefix score boost used when matches share a common region code prefix.
+// A positive boost value is applied; non-positive values are ignored.
 func WithPrefixScoreBoost(boost float64) Option {
 	return func(cfg *matcherConfig) {
 		if boost > 0 {
@@ -202,7 +213,9 @@ func WithPrefixScoreBoost(boost float64) Option {
 
 // WithMatchFillBonus returns an Option that sets the incremental score bonus
 // for each filled (non-empty) level in a potential match combination. This bonus
-// rewards more complete matches.
+// WithMatchFillBonus sets a positive bonus added to the combined suggestion score to reward matches
+// that cover more hierarchical levels. If `bonus` is less than or equal to zero the configuration
+// is left unchanged.
 func WithMatchFillBonus(bonus float64) Option {
 	return func(cfg *matcherConfig) {
 		if bonus > 0 {
@@ -212,7 +225,9 @@ func WithMatchFillBonus(bonus float64) Option {
 }
 
 // WithCacheSize sets the matcher's cache capacity to the provided size when size is greater than zero.
+// WithCacheSize sets the matcher cache size to the provided value.
 // If size is zero or negative, the existing cache capacity is left unchanged.
+// It returns an Option that applies this configuration.
 func WithCacheSize(size int) Option {
 	return func(cfg *matcherConfig) {
 		if size > 0 {
@@ -222,6 +237,7 @@ func WithCacheSize(size int) Option {
 }
 
 // WithWordComboSize returns an Option that sets the word combination size used in query fragmentation.
+// WithWordComboSize returns an Option that sets the matcher's wordComboSize to the given size.
 // Non-positive values are ignored.
 func WithWordComboSize(size int) Option {
 	return func(cfg *matcherConfig) {
@@ -262,7 +278,12 @@ const defaultMatchFillBonus = 0.03
 // options (thresholds, n-gram size, parallelism, timeouts, weights, cache size) and
 // initializes internal thresholds, weights and the suggestion cache.
 // It returns a configured *Matcher or an error if any region ID fails to parse or an
-// underlying n-gram index cannot be created.
+// NewMatcher constructs a Matcher populated from the provided facets and configured by the supplied functional options.
+// It builds per-level n-gram indexes (province, city, district, subdistrict) from facet names and aliases, applies defaults
+// and option overrides (thresholds, n-gram size, parallelism, timeouts, weights, cache size, scoring tweaks, and fragmentation size),
+// and initializes internal caches and scoring parameters.
+// The function normalizes and deduplicates entries per (normalized name + region ID) and skips facets with empty RegionID.
+// It returns an error if a facet's RegionID cannot be parsed or if an underlying n-gram index cannot be created.
 func NewMatcher(facets []Facet, opts ...Option) (*Matcher, error) {
 	cfg := matcherConfig{
 		thresholds:       make(map[Level]float64, len(defaultThresholds)),
@@ -565,7 +586,11 @@ func (m *Matcher) searchLevel(level Level, fragment string, limit int) []Match {
 // descending Similarity (tie-broken by ascending RegionID), removes duplicates
 // (a duplicate has the same RegionID and the same name ignoring case), and
 // returns up to limit unique matches. If limit is zero or negative, all unique
-// matches are returned.
+// mergeMatches merges existing and additions into a single slice of unique matches.
+// It sorts candidates by Similarity descending (ties broken by RegionID ascending),
+// removes duplicates where duplicates are defined by the combination of RegionID and
+// the lowercased Name (the first occurrence is kept), and returns up to limit entries.
+// If limit <= 0 all unique matches are returned.
 func mergeMatches(existing, additions []Match, limit int) []Match {
 	combined := make([]Match, 0, len(existing)+len(additions))
 	combined = append(combined, existing...)
@@ -633,7 +658,7 @@ func (m *Matcher) sequentialFallback(fragments []string) Suggestion {
 // It resolves inconsistencies by preferring matches with higher similarity and clears
 // less likely conflicting matches; it also attempts to derive missing higher-level
 // matches (Province from City, City from District, District from Subdistrict) using
-// and clears the inconsistent counterpart.
+// inconsistent with a stronger parent.
 func harmonizeSuggestion(s *Suggestion) {
 	if s.City != nil && s.Province != nil && !consistentHierarchy(s.Province.RegionID, s.City.RegionID) {
 		if s.City.Similarity >= s.Province.Similarity {
@@ -704,7 +729,7 @@ func harmonizeSuggestion(s *Suggestion) {
 // consistentHierarchy reports whether the provided region codes form a consistent
 // hierarchical chain from province through city, district, to subdistrict.
 // Codes should be supplied in that order (province, city, district, subdistrict);
-// trailing levels may be omitted.
+/// and false otherwise.
 func consistentHierarchy(codes ...string) bool {
 	return regionhierarchy.IsConsistentHierarchy(codes...)
 }
@@ -713,7 +738,8 @@ func consistentHierarchy(codes ...string) bool {
 // It returns the mean similarity across Province, City, District, and Subdistrict matches,
 // scoreSuggestion computes the average Similarity of non-nil matches in s
 // (Province, City, District, Subdistrict). It returns 0 if there are no
-// matches.
+// scoreSuggestion computes the average Similarity of the non-nil matches contained in s.
+// If s has no matches, it returns 0.
 func scoreSuggestion(s Suggestion) float64 {
 	total := 0.0
 	count := 0.0
@@ -736,7 +762,14 @@ func scoreSuggestion(s Suggestion) float64 {
 // and returns up to the first 5 words. For shorter queries it adds the normalized whole query, splits by a set
 // of common separators to add parts, and also adds individual words and 2-word combinations. The function
 // deduplicates fragments, enforces caps to avoid explosion (limits on parts, words and combinations), and
-// result is truncated to 5 fragments.
+// candidateFragments returns up to five normalized query fragments used for matching.
+// For queries longer than 100 characters it returns up to the first five words from
+// the normalized prefix (first 50 characters). For shorter queries it builds a
+// deduplicated set of fragments including the normalized whole query, parts split
+// by common separators, individual words, and contiguous word combinations up to
+// wordComboSize. Construction is capped to avoid explosion (internal cap ≈ 20
+// unique fragments), and the final fragments are sorted by length and truncated
+// to at most five entries.
 func candidateFragments(query string, wordComboSize int) []string {
 	// For very long queries, extract only the most relevant parts
 	if len(query) > 100 {
@@ -823,7 +856,8 @@ func candidateFragments(query string, wordComboSize int) []string {
 // It trims surrounding space, limits processing to the first 100 characters, treats any non-letter and
 // non-digit characters as separators, collapses consecutive whitespace, and returns at most 10 tokens
 // normalize produces a lowercase, space-separated token string suitable for indexing.
-// It trims input, processes at most the first 100 bytes, treats letters and digits as token characters and any other rune as a separator, collapses consecutive separators/whitespace into single spaces, limits the number of output tokens to 10, and returns an empty string if no valid tokens remain.
+// normalize returns a cleaned, lowercased token sequence derived from value.
+// It trims surrounding space, truncates to the first 100 characters, treats letters and digits as token characters and any other rune as a separator, collapses consecutive separators and whitespace to single spaces, limits the result to at most 10 space-separated tokens, and returns an empty string if no valid tokens remain.
 func normalize(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
