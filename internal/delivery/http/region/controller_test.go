@@ -41,7 +41,8 @@ func (s *stubUseCase) SearchByProvince(ctx context.Context, province string, opt
 }
 
 func (s *stubUseCase) SearchByPostalCode(ctx context.Context, postalCode string, opts model.SearchOptions) (model.SearchResponse, error) {
-	return s.Search(ctx, model.SearchRequest{Options: opts})
+	// Use Query to carry the postal code since SearchRequest has no dedicated field.
+	return s.Search(ctx, model.SearchRequest{Query: postalCode, Options: opts})
 }
 
 func TestSearchHandlerSuccess(t *testing.T) {
