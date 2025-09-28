@@ -84,7 +84,9 @@ func New(ctx context.Context, repo repository.RegionRepository, opts RegionUseCa
 
 func (uc *regionUseCase) Search(ctx context.Context, req model.SearchRequest) (model.SearchResponse, error) {
 	sanitizedQuery := sanitizeFTSQuery(req.Query)
-	if sanitizedQuery == "" && req.Subdistrict == "" && req.District == "" && req.City == "" && req.Province == "" {
+	trimmedQuery := strings.TrimSpace(sanitizedQuery)
+
+	if trimmedQuery == "" && req.Subdistrict == "" && req.District == "" && req.City == "" && req.Province == "" {
 		return model.SearchResponse{}, sharederrors.New(sharederrors.CodeInvalidInput, "at least one search parameter is required")
 	}
 
@@ -96,7 +98,7 @@ func (uc *regionUseCase) Search(ctx context.Context, req model.SearchRequest) (m
 		return model.SearchResponse{}, err
 	}
 
-	req.Query = sanitizedQuery
+	req.Query = trimmedQuery
 	suggestion := uc.applySuggestion(req.Query, &req)
 
 	params := repository.RegionSearchParams{
