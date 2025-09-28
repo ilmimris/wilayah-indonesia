@@ -99,6 +99,7 @@ func applyMatcherDefaults(cfg *MatcherConfig) {
 		regionhierarchy.LevelDistrict:    0.25,
 		regionhierarchy.LevelSubdistrict: 0.25,
 	}
+
 	if cfg.SnapshotPath == "" {
 		cfg.SnapshotPath = filepath.Join("data", "matcher_snapshot.json")
 	}
@@ -108,30 +109,27 @@ func applyMatcherDefaults(cfg *MatcherConfig) {
 	if cfg.ParallelTopK <= 0 {
 		cfg.ParallelTopK = 5
 	}
+
+	// Ensure the thresholds map exists, then fill any missing entries
 	if len(cfg.LevelThresholds) == 0 {
 		cfg.LevelThresholds = make(map[regionhierarchy.Level]float64, len(defaultThresholds))
-		for level, threshold := range defaultThresholds {
+	}
+	for level, threshold := range defaultThresholds {
+		if _, ok := cfg.LevelThresholds[level]; !ok {
 			cfg.LevelThresholds[level] = threshold
 		}
-	} else {
-		for level, threshold := range defaultThresholds {
-			if _, ok := cfg.LevelThresholds[level]; !ok {
-				cfg.LevelThresholds[level] = threshold
-			}
-		}
 	}
+
+	// Ensure the weights map exists, then fill any missing entries
 	if len(cfg.LevelWeights) == 0 {
 		cfg.LevelWeights = make(map[regionhierarchy.Level]float64, len(defaultWeights))
-		for level, weight := range defaultWeights {
+	}
+	for level, weight := range defaultWeights {
+		if _, ok := cfg.LevelWeights[level]; !ok {
 			cfg.LevelWeights[level] = weight
 		}
-	} else {
-		for level, weight := range defaultWeights {
-			if _, ok := cfg.LevelWeights[level]; !ok {
-				cfg.LevelWeights[level] = weight
-			}
-		}
 	}
+
 	if cfg.MinCombinedScore <= 0 {
 		cfg.MinCombinedScore = 0.6
 	}
