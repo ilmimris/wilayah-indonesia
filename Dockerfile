@@ -30,6 +30,9 @@ WORKDIR /app
 # Copy the binary from builder stage
 COPY --from=builder /app/regions-api .
 
+# Copy CA certificates so DuckDB can download extensions over HTTPS
+COPY --from=builder /etc/ssl/certs /etc/ssl/certs
+
 # Copy the database file
 COPY --from=builder /app/data/regions.duckdb ./data/regions.duckdb
 
