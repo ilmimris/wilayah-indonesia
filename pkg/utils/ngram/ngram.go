@@ -282,7 +282,8 @@ func (ng *NGram[T]) Clear() {
 
 // ItemsSharingNGrams returns the number of shared n-grams for every matching item.
 func (ng *NGram[T]) ItemsSharingNGrams(query string) map[T]int {
-	grams := ng.split(ng.pad(query))
+	normalized := ng.normalizeQuery(query)
+	grams := ng.split(ng.pad(normalized))
 	return ng.itemsSharingFromGrams(grams)
 }
 
