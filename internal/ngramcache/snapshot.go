@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ilmimris/wilayah-indonesia/internal/usecase/region/matcher"
+	regionmatcher "github.com/ilmimris/wilayah-indonesia/internal/usecase/region/matcher"
 	"github.com/ilmimris/wilayah-indonesia/pkg/regionhierarchy"
 )
 
