@@ -167,13 +167,13 @@ func NewFiber() (*fiber.App, error) {
 }
 
 // BootstrapHTTP wires and configures the HTTP server, database connection, logger, optional region matcher, and routing.
-// 
+//
 // It enforces read-only mode on the provided options and applies matcher defaults. If a matcher snapshot is available it
 // will attempt to initialise a matcher and inject it into the region use case; if the snapshot is missing or initialisation
 // fails the bootstrap proceeds with a nil matcher and logs a warning. The function opens a DuckDB connection, constructs the
 // region use case, creates a Fiber app with request logging and recovery middleware, registers region routes, and exposes a
 // /healthz endpoint that verifies the database is reachable within a 2-second timeout.
-// 
+//
 // On success it returns an HTTPBootstrap containing the configured App, DB, Logger and the Matcher configuration. An error
 // BootstrapHTTP creates and configures the HTTP server, database, logger, and optional region matcher,
 // and returns an HTTPBootstrap ready for serving.
@@ -205,6 +205,8 @@ func BootstrapHTTP(ctx context.Context, opts Options) (HTTPBootstrap, error) {
 			regionmatcher.WithSuggestionTimeout(opts.Matcher.Timeout),
 			regionmatcher.WithMinCombinedScore(opts.Matcher.MinCombinedScore),
 			regionmatcher.WithCacheSize(opts.Matcher.CacheSize),
+			regionmatcher.WithWordComboSize(2),
+			regionmatcher.WithNGramSize(3),
 		}
 		if len(weights) > 0 {
 			matcherOpts = append(matcherOpts, regionmatcher.WithPercolatorWeights(weights))

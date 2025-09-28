@@ -87,6 +87,7 @@ type Matcher struct {
 	minCombinedScore float64
 	prefixScoreBoost float64
 	matchFillBonus   float64
+	wordComboSize    int
 }
 
 type indexEntry struct {
@@ -112,6 +113,7 @@ type matcherConfig struct {
 	cacheSize        int
 	prefixScoreBoost float64
 	matchFillBonus   float64
+	wordComboSize    int
 }
 
 // WithLevelThreshold returns an Option that sets the minimum similarity threshold for the given Level.
@@ -219,6 +221,16 @@ func WithCacheSize(size int) Option {
 	}
 }
 
+// WithWordComboSize returns an Option that sets the word combination size used in query fragmentation.
+// Non-positive values are ignored.
+func WithWordComboSize(size int) Option {
+	return func(cfg *matcherConfig) {
+		if size > 0 {
+			cfg.wordComboSize = size
+		}
+	}
+}
+
 var defaultThresholds = map[Level]float64{
 	LevelSubdistrict: 0.45,
 	LevelDistrict:    0.45,
@@ -253,15 +265,16 @@ const defaultMatchFillBonus = 0.03
 // underlying n-gram index cannot be created.
 func NewMatcher(facets []Facet, opts ...Option) (*Matcher, error) {
 	cfg := matcherConfig{
-		thresholds:   make(map[Level]float64, len(defaultThresholds)),
-		ngramN:       3,
-		parallelTopK: 5,
-		timeout:      100 * time.Millisecond,
-		weights:      make(map[Level]float64, len(defaultWeights)),
+		thresholds:       make(map[Level]float64, len(defaultThresholds)),
+		ngramN:           3,
+		parallelTopK:     5,
+		timeout:          100 * time.Millisecond,
+		weights:          make(map[Level]float64, len(defaultWeights)),
 		minScore:         defaultMinCombinedScore,
 		cacheSize:        1000,
 		prefixScoreBoost: defaultPrefixScoreBoost,
 		matchFillBonus:   defaultMatchFillBonus,
+		wordComboSize:    2, // Default to 2
 	}
 	for level, value := range defaultThresholds {
 		cfg.thresholds[level] = value
@@ -288,6 +301,9 @@ func NewMatcher(facets []Facet, opts ...Option) (*Matcher, error) {
 	}
 	if cfg.cacheSize <= 0 {
 		cfg.cacheSize = 1000
+	}
+	if cfg.wordComboSize <= 0 {
+		cfg.wordComboSize = 3
 	}
 
 	byLevel := map[Level]map[string]indexEntry{
@@ -410,6 +426,7 @@ func NewMatcher(facets []Facet, opts ...Option) (*Matcher, error) {
 		minCombinedScore: cfg.minScore,
 		prefixScoreBoost: cfg.prefixScoreBoost,
 		matchFillBonus:   cfg.matchFillBonus,
+		wordComboSize:    cfg.wordComboSize,
 	}, nil
 }
 
@@ -430,7 +447,7 @@ func (m *Matcher) Suggest(query string) Suggestion {
 		return Suggestion{}
 	}
 
-	fragments := candidateFragments(query)
+	fragments := candidateFragments(query, m.wordComboSize)
 	if len(fragments) == 0 {
 		return Suggestion{}
 	}
@@ -714,13 +731,13 @@ func scoreSuggestion(s Suggestion) float64 {
 }
 
 // candidateFragments produces a short, ordered list of normalized query fragments suitable for n-gram matching.
-// 
+//
 // For queries longer than 100 characters, it extracts words from the normalized prefix (first 50 characters)
 // and returns up to the first 5 words. For shorter queries it adds the normalized whole query, splits by a set
 // of common separators to add parts, and also adds individual words and 2-word combinations. The function
 // deduplicates fragments, enforces caps to avoid explosion (limits on parts, words and combinations), and
 // result is truncated to 5 fragments.
-func candidateFragments(query string) []string {
+func candidateFragments(query string, wordComboSize int) []string {
 	// For very long queries, extract only the most relevant parts
 	if len(query) > 100 {
 		// Extract only words and numbers, limit to first 50 characters
@@ -770,7 +787,7 @@ func candidateFragments(query string) []string {
 			}
 		}
 		// Limit n-gram combinations for performance
-		for size := 2; size <= 2; size++ { // Reduced from 3 to 2
+		for size := 2; size <= wordComboSize; size++ {
 			if len(words) < size {
 				break
 			}
@@ -802,7 +819,7 @@ func candidateFragments(query string) []string {
 }
 
 // normalize produces a lowercase, space-separated token string suitable for indexing region names.
-// 
+//
 // It trims surrounding space, limits processing to the first 100 characters, treats any non-letter and
 // non-digit characters as separators, collapses consecutive whitespace, and returns at most 10 tokens
 // normalize produces a lowercase, space-separated token string suitable for indexing.

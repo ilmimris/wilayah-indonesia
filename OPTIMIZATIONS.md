@@ -14,9 +14,13 @@ We've implemented several key optimizations to reduce the API latency from over 
 - Skip processing fragments with less than 2 characters
 - Limited the number of fragments to 5 per query (reduced from 10)
 
-### 3. Optimized N-gram Combinations
-- Reduced n-gram combinations from 3-grams to 2-grams for better performance
-- This reduces the computational complexity while maintaining accuracy
+### 3. Configurable Word Combination Size
+
+- The query fragmentation logic in `candidateFragments` generates word combinations from the input query to improve search accuracy for multi-word place names.
+- The size of these combinations is configurable via the `WithWordComboSize` option when creating a `Matcher`.
+- The default size is 3, which provides a good balance between accuracy and performance.
+- A size of 2 can be used for better performance, but an evaluation has shown that this may cause the search to miss important fragments for complex queries (e.g., "Kota Administrasi Jakarta Selatan").
+- This configurability allows for a trade-off between performance and search quality based on specific needs.
 
 ### 4. Precomputed Values
 - Precomputed allgrams values to avoid repeated calculations
