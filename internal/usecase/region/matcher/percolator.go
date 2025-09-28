@@ -8,7 +8,9 @@ import (
 
 // runPercolator searches the cross-product of candidate matches across hierarchical levels to find the highest‑scoring region suggestion that meets a minimum score.
 // 
-// It examines combinations drawn from levelMatches, scores each normalized and hierarchy-consistent selection using weights, and returns the best Suggestion and true when a non-empty province/city/district candidate meets or exceeds minScore. If no valid candidate is found or the best score is below minScore, it returns an empty Suggestion and false. The returned Suggestion.Score may be adjusted upward by a secondary averaging heuristic before being returned.
+// runPercolator searches the Cartesian product of per-level matches to find the highest-scoring hierarchy-consistent region suggestion.
+// It normalizes each combination, scores valid selections using the provided weights, and returns the best Suggestion and true when a candidate with a non-empty Province, City, or District meets or exceeds minScore.
+// If no valid candidate meets minScore it returns an empty Suggestion and false. The returned Suggestion.Score may be increased if scoreSuggestion produces a higher value.
 func runPercolator(levelMatches map[Level][]Match, weights map[Level]float64, minScore float64) (Suggestion, bool) {
 	choices := make([][]Match, len(levelOrder))
 	for i, level := range levelOrder {
@@ -84,7 +86,12 @@ func runPercolator(levelMatches map[Level][]Match, weights map[Level]float64, mi
 // If the district is absent the function delegates to normalizeWithoutDistrict to perform
 // appropriate promotions and validations. The function returns (nil, false) when the selection
 // cannot be normalized into a valid hierarchy (for example when both province and city are empty
-// after normalization); otherwise it returns the normalized slice and true.
+// normalizeSelection produces a hierarchy-consistent copy of the input matches for province, city, district, and subdistrict.
+// It clears or promotes entries to ensure parent/child RegionID consistency, derives missing province/city codes from a present district when possible,
+// and delegates to normalizeWithoutDistrict when no district is provided.
+// If both province and city are empty after normalization the function returns nil, false.
+// If a subdistrict is present it is anchored to the nearest non-empty upper-level region (district, then city, then province) and cleared if it does not share a prefix with that anchor.
+// On success it returns the normalized slice and true, otherwise nil and false.
 func normalizeSelection(selection []Match) ([]Match, bool) {
 	normalized := make([]Match, len(selection))
 	copy(normalized, selection)
@@ -153,7 +160,9 @@ func normalizeSelection(selection []Match) ([]Match, bool) {
 // If province is empty but city contains a province-level code, the city is promoted to a province match.
 // The district slot is cleared. If a subdistrict is provided, it is retained only when it shares a prefix with an anchor region (city if present, otherwise province); otherwise the subdistrict is cleared.
 // 
-// Returns the possibly-updated selection and true on success, or nil and false if neither province nor city is present after normalization.
+// normalizeWithoutDistrict normalizes a selection when there is no district match, ensuring province/city hierarchy consistency, optionally promoting a city to a province, clearing the district slot, and anchoring the subdistrict to an available city or province only if their region codes share a prefix.
+//
+// If both province and city are empty after normalization the function returns nil, false. Otherwise it returns the updated selection with district cleared and true.
 func normalizeWithoutDistrict(selection []Match, province, city, subdistrict Match) ([]Match, bool) {
 	if province.RegionID == "" && city.RegionID == "" {
 		return nil, false
@@ -192,7 +201,8 @@ func normalizeWithoutDistrict(selection []Match, province, city, subdistrict Mat
 // evaluateCombination computes a weighted score for the given selection using the provided per-level weights.
 // It returns a score in the range [0, 1] where higher values indicate better overall match quality.
 // Matches with empty RegionID or non-positive weight are ignored. Selections that contain multiple matched
-// levels receive small bonuses when adjacent matches share a region prefix and for each additional filled level.
+// evaluateCombination computes a weighted similarity score for a selection of Matches using the provided per-level weights.
+// It averages per-match similarity weighted by level, adds a small bonus when adjacent matches share a region prefix and an incremental bonus per additional filled level, and clamps the result to the range [0, 1].
 func evaluateCombination(selection []Match, weights map[Level]float64) float64 {
 	var weightedSum float64
 	var totalWeight float64
@@ -227,7 +237,7 @@ func evaluateCombination(selection []Match, weights map[Level]float64) float64 {
 
 // suggestionFromSelection converts a normalized slice of Match values into a Suggestion.
 // For each non-empty Match in selection, the corresponding level field (as defined by levelOrder)
-// is populated with that match. The assembled Suggestion is then harmonized before being returned.
+// suggestionFromSelection constructs a Suggestion from a normalized slice of Matches by assigning each non-empty match to its corresponding level according to levelOrder. The assembled Suggestion is harmonized before being returned.
 func suggestionFromSelection(selection []Match) Suggestion {
 	suggestion := Suggestion{}
 	for i, match := range selection {

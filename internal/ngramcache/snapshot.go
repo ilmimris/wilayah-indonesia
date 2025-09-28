@@ -48,7 +48,7 @@ type parsedRecord struct {
 // 
 // The function returns an error if the file cannot be read, if any region code is
 // invalid, if referential integrity is broken when resolving parent regions, or if
-// the input cannot be scanned.
+// (for example when a required parent region is missing).
 func BuildSnapshotFromWilayah(path string) (Snapshot, error) {
 	contents, err := os.ReadFile(path)
 	if err != nil {
@@ -109,7 +109,13 @@ func BuildSnapshotFromWilayah(path string) (Snapshot, error) {
 
 // buildFacets converts parsed region records into a sorted slice of regionmatcher.Facet.
 // It validates that each subdistrict references an existing province, city, and district and
-// returns an error if any required parent region is missing.
+// buildFacets converts a map of parsed region records into a sorted slice of regionmatcher.Facet,
+// validating that each subdistrict has an existing province, city, and district parent.
+//
+// It groups input records by hierarchy level, constructs a Facet for each subdistrict using the
+// corresponding province, city, and district names, and returns an error if any required parent
+// region is missing (the error names the missing parent and the affected region). The returned
+// facets are sorted by Province, City, District, Subdistrict, then RegionID.
 func buildFacets(records map[string]parsedRecord) ([]regionmatcher.Facet, error) {
 	provinces := make(map[string]string)
 	cities := make(map[string]string)
@@ -173,7 +179,7 @@ func buildFacets(records map[string]parsedRecord) ([]regionmatcher.Facet, error)
 }
 
 // WriteSnapshot writes the given Snapshot to dest as indented JSON and atomically replaces any existing file.
-// It ensures the destination directory exists before writing and returns an error if dest is empty or if any filesystem or marshal operation fails.
+// It requires dest to be non-empty. On failure it returns an error describing the cause (ensuring the directory, marshaling the snapshot, writing the temporary file, or renaming it into place).
 func WriteSnapshot(snapshot Snapshot, dest string) error {
 	if dest == "" {
 		return fmt.Errorf("destination path is required for matcher snapshot")
@@ -196,7 +202,8 @@ func WriteSnapshot(snapshot Snapshot, dest string) error {
 }
 
 // LoadSnapshot reads and unmarshals a Snapshot JSON file from the given path.
-// It returns an error if path is empty, if the file cannot be read, or if the file contents cannot be parsed as a Snapshot.
+// LoadSnapshot reads a JSON snapshot file from the provided filesystem path and unmarshals it into a Snapshot.
+// It returns an error if path is empty, the file cannot be read, or the contents cannot be parsed as a Snapshot.
 func LoadSnapshot(path string) (Snapshot, error) {
 	if path == "" {
 		return Snapshot{}, fmt.Errorf("snapshot path is required")
