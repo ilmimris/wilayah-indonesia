@@ -2,74 +2,97 @@ package regionmatcher
 
 import (
 	"math"
+	"sort"
 
 	"github.com/ilmimris/wilayah-indonesia/pkg/regionhierarchy"
 )
 
-// runPercolator searches the cross-product of candidate matches across hierarchical levels to find the highest‑scoring region suggestion that meets a minimum score.
-// 
-// runPercolator searches the Cartesian product of per-level matches to find the highest-scoring hierarchy-consistent region suggestion.
-// It normalizes each combination, scores valid selections using the provided weights, and returns the best Suggestion and true when a candidate with a non-empty Province, City, or District meets or exceeds minScore.
-// If no valid candidate meets minScore it returns an empty Suggestion and false. The returned Suggestion.Score may be increased if scoreSuggestion produces a higher value.
+const maxIterations = 10000 // Safety break to prevent runaway computation
+
+// runPercolator searches the cross-product of candidate matches across hierarchical levels to find the highest-scoring region suggestion that meets a minimum score.
+// It uses a depth-first search with pruning to efficiently explore combinations.
 func runPercolator(levelMatches map[Level][]Match, weights map[Level]float64, minScore float64) (Suggestion, bool) {
-	choices := make([][]Match, len(levelOrder))
-	for i, level := range levelOrder {
+	sortedLevels := make([]Level, 0, len(levelOrder))
+	for _, level := range levelOrder {
+		if _, ok := levelMatches[level]; ok {
+			sortedLevels = append(sortedLevels, level)
+		}
+	}
+
+	// Sort levels by weight in descending order to explore higher-impact choices first.
+	sort.SliceStable(sortedLevels, func(i, j int) bool {
+		return weights[sortedLevels[i]] > weights[sortedLevels[j]]
+	})
+
+	choices := make([][]Match, len(sortedLevels))
+	for i, level := range sortedLevels {
 		matches := levelMatches[level]
 		bucket := make([]Match, 1, len(matches)+1)
-		bucket[0] = Match{}
+		bucket[0] = Match{Level: level} // "None" choice
 		bucket = append(bucket, matches...)
 		choices[i] = bucket
 	}
 
-	indices := make([]int, len(levelOrder))
 	var best Suggestion
 	bestScore := -math.MaxFloat64
 	found := false
+	iterations := maxIterations
 
-	for {
-		selection := make([]Match, len(levelOrder))
-		for i, bucket := range choices {
-			if len(bucket) == 0 {
-				continue
-			}
-			selection[i] = bucket[indices[i]]
+	var dfs func(int, []Match)
+	dfs = func(levelIdx int, currentSelection []Match) {
+		if iterations <= 0 {
+			return
 		}
 
-		normalized, ok := normalizeSelection(selection)
-		if ok {
-			score := evaluateCombination(normalized, weights)
-			if score > bestScore {
-				candidate := suggestionFromSelection(normalized)
-				if candidate.Province != nil || candidate.City != nil || candidate.District != nil {
-					best = candidate
-					bestScore = score
-					found = true
+		// Base case
+		if levelIdx == len(sortedLevels) {
+			iterations--
+
+			selectionByLevel := make(map[Level]Match)
+			for _, match := range currentSelection {
+				if match.RegionID != "" {
+					selectionByLevel[match.Level] = match
 				}
 			}
+
+			orderedSelection := make([]Match, len(levelOrder))
+			for i, level := range levelOrder {
+				if match, ok := selectionByLevel[level]; ok {
+					orderedSelection[i] = match
+				}
+			}
+
+			normalized, ok := normalizeSelection(orderedSelection)
+			if ok {
+				score := evaluateCombination(normalized, weights)
+				if score > bestScore {
+					candidate := suggestionFromSelection(normalized)
+					if candidate.Province != nil || candidate.City != nil || candidate.District != nil {
+						best = candidate
+						bestScore = score
+						found = true
+					}
+				}
+			}
+			return
 		}
 
-		// increment
-		idx := len(levelOrder) - 1
-		for idx >= 0 {
-			if len(choices[idx]) == 0 {
-				idx--
-				continue
-			}
-			indices[idx]++
-			if indices[idx] < len(choices[idx]) {
-				break
-			}
-			indices[idx] = 0
-			idx--
-		}
-		if idx < 0 {
-			break
+		choiceBucket := choices[levelIdx]
+
+		for _, choice := range choiceBucket {
+			newSelection := make([]Match, len(currentSelection)+1)
+			copy(newSelection, currentSelection)
+			newSelection[len(currentSelection)] = choice
+			dfs(levelIdx+1, newSelection)
 		}
 	}
+
+	dfs(0, []Match{})
 
 	if !found || bestScore < minScore {
 		return Suggestion{}, false
 	}
+
 	best.Score = bestScore
 	if avg := scoreSuggestion(best); avg > best.Score {
 		best.Score = avg
@@ -155,11 +178,11 @@ func normalizeSelection(selection []Match) ([]Match, bool) {
 }
 
 // normalizeWithoutDistrict normalizes a selection when no district-level match is present.
-// 
+//
 // It ensures at least one of province or city remains and that province/city are hierarchically consistent.
 // If province is empty but city contains a province-level code, the city is promoted to a province match.
 // The district slot is cleared. If a subdistrict is provided, it is retained only when it shares a prefix with an anchor region (city if present, otherwise province); otherwise the subdistrict is cleared.
-// 
+//
 // normalizeWithoutDistrict normalizes a selection when there is no district match, ensuring province/city hierarchy consistency, optionally promoting a city to a province, clearing the district slot, and anchoring the subdistrict to an available city or province only if their region codes share a prefix.
 //
 // If both province and city are empty after normalization the function returns nil, false. Otherwise it returns the updated selection with district cleared and true.
