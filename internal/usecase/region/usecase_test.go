@@ -195,7 +195,7 @@ func TestSearchHandlesAmbiguousMatcherInput(t *testing.T) {
 	}
 }
 
-func TestSearchDoesNotApplySuggestionBelowThreshold(t *testing.T) {
+func TestSearchReturnsSuggestionButDoesNotApplyBelowThreshold(t *testing.T) {
 	facets := []regionmatcher.Facet{{
 		RegionID:    "11.01.01.2001",
 		Subdistrict: "Keude Bakongan",
@@ -226,6 +226,6 @@ func TestSearchDoesNotApplySuggestionBelowThreshold(t *testing.T) {
 		t.Fatalf("expected repository params to remain unchanged, got %+v", repo.lastParams)
 	}
 	if resp.Suggestion == nil {
-		t.Fatalf("expected suggestion even when not applied")
+		t.Fatalf("expected suggestion to be returned in response even when not applied to search params")
 	}
 }
