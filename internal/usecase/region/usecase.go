@@ -126,41 +126,67 @@ func (uc *regionUseCase) applySuggestion(query string, req *model.SearchRequest)
 	suggestion := uc.matcher.Suggest(query)
 	modelSuggestion := convertSuggestion(suggestion)
 	if suggestion.Strategy == "percolator" && suggestion.Score >= uc.matcherMinScore {
-		if req.Province == "" {
-			switch {
-			case suggestion.Province != nil && suggestion.Province.Name != "":
-				req.Province = suggestion.Province.Name
-			case suggestion.City != nil && suggestion.City.Province != "":
-				req.Province = suggestion.City.Province
-			case suggestion.District != nil && suggestion.District.Province != "":
-				req.Province = suggestion.District.Province
-			case suggestion.Subdistrict != nil && suggestion.Subdistrict.Province != "":
-				req.Province = suggestion.Subdistrict.Province
-			}
-		}
-		if req.City == "" {
-			switch {
-			case suggestion.City != nil && suggestion.City.Name != "":
-				req.City = suggestion.City.Name
-			case suggestion.District != nil && suggestion.District.City != "":
-				req.City = suggestion.District.City
-			case suggestion.Subdistrict != nil && suggestion.Subdistrict.City != "":
-				req.City = suggestion.Subdistrict.City
-			}
-		}
-		if req.District == "" {
-			switch {
-			case suggestion.District != nil && suggestion.District.Name != "":
-				req.District = suggestion.District.Name
-			case suggestion.Subdistrict != nil && suggestion.Subdistrict.District != "":
-				req.District = suggestion.Subdistrict.District
-			}
-		}
-		if req.Subdistrict == "" && suggestion.Subdistrict != nil {
-			req.Subdistrict = suggestion.Subdistrict.Name
-		}
+		uc.applyHierarchicalSuggestions(suggestion, req)
 	}
 	return modelSuggestion
+}
+
+func (uc *regionUseCase) applyHierarchicalSuggestions(s regionmatcher.Suggestion, req *model.SearchRequest) {
+	// Apply province suggestion
+	if req.Province == "" {
+		req.Province = uc.extractProvinceName(s)
+	}
+	// Apply city suggestion
+	if req.City == "" {
+		req.City = uc.extractCityName(s)
+	}
+	// Apply district suggestion
+	if req.District == "" {
+		req.District = uc.extractDistrictName(s)
+	}
+	// Apply subdistrict suggestion
+	if req.Subdistrict == "" && s.Subdistrict != nil {
+		req.Subdistrict = s.Subdistrict.Name
+	}
+}
+
+func (uc *regionUseCase) extractProvinceName(s regionmatcher.Suggestion) string {
+	if s.Province != nil && s.Province.Name != "" {
+		return s.Province.Name
+	}
+	if s.City != nil && s.City.Province != "" {
+		return s.City.Province
+	}
+	if s.District != nil && s.District.Province != "" {
+		return s.District.Province
+	}
+	if s.Subdistrict != nil && s.Subdistrict.Province != "" {
+		return s.Subdistrict.Province
+	}
+	return ""
+}
+
+func (uc *regionUseCase) extractCityName(s regionmatcher.Suggestion) string {
+	if s.City != nil && s.City.Name != "" {
+		return s.City.Name
+	}
+	if s.District != nil && s.District.City != "" {
+		return s.District.City
+	}
+	if s.Subdistrict != nil && s.Subdistrict.City != "" {
+		return s.Subdistrict.City
+	}
+	return ""
+}
+
+func (uc *regionUseCase) extractDistrictName(s regionmatcher.Suggestion) string {
+	if s.District != nil && s.District.Name != "" {
+		return s.District.Name
+	}
+	if s.Subdistrict != nil && s.Subdistrict.District != "" {
+		return s.Subdistrict.District
+	}
+	return ""
 }
 
 func (uc *regionUseCase) SearchByDistrict(ctx context.Context, district, city, province string, opts model.SearchOptions) (model.SearchResponse, error) {
