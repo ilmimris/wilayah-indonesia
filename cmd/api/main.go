@@ -23,13 +23,19 @@ func main() {
 	bootstrapLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	slog.SetDefault(bootstrapLogger)
 
+	matcherSnapshotPath, ok := os.LookupEnv("MATCHER_SNAPSHOT_PATH")
+	if !ok || matcherSnapshotPath == "" {
+		slog.Error("MATCHER_SNAPSHOT_PATH environment variable not set or empty")
+		os.Exit(1)
+	}
+
 	ctx := context.Background()
 	opts := config.Options{
 		DBPath:   os.Getenv("DB_PATH"),
 		Port:     os.Getenv("PORT"),
 		ReadOnly: true,
 		Matcher: config.MatcherConfig{
-			SnapshotPath:     os.Getenv("MATCHER_SNAPSHOT_PATH"),
+			SnapshotPath:     matcherSnapshotPath,
 			MinCombinedScore: 0.5,
 			Timeout:          250 * time.Millisecond,
 			LevelThresholds: map[regionhierarchy.Level]float64{

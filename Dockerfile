@@ -33,8 +33,18 @@ COPY --from=builder /app/regions-api .
 # Copy the database file
 COPY --from=builder /app/data/regions.duckdb ./data/regions.duckdb
 
+# Copy the matcher snapshot if it exists
+COPY --from=builder /app/data/matcher_snapshot.json ./data/matcher_snapshot.json
+
+# Configure environment variable
+ENV MATCHER_SNAPSHOT_PATH=/app/data/matcher_snapshot.json
+ENV DB_PATH=/app/data/regions.duckdb
+ENV PORT=8080
+ENV GO_ENV=production
+ENV LOG_LEVEL=info
+
 # Expose port
-EXPOSE 8080
+EXPOSE $PORT
 
 # Command to run the application
 CMD ["/app/regions-api"]

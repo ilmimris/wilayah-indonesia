@@ -24,7 +24,7 @@ build:
 # Run the API server
 .PHONY: run
 run:
-	go run -tags="$(GO_TAGS)" ./$(MAIN_DIR)
+	MATCHER_SNAPSHOT_PATH=data/matcher_snapshot.json go run -tags="$(GO_TAGS)" ./$(MAIN_DIR)
 
 # Run the data ingestor
 .PHONY: ingest
