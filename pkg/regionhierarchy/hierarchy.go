@@ -97,15 +97,7 @@ func ParseRegionID(id string) (Segments, error) {
 		return Segments{}, fmt.Errorf("region ID %q has unsupported depth", id)
 	}
 
-	if segs.Subdistrict == "" && segs.level == LevelSubdistrict {
-		segs.Subdistrict = trimmed
-	}
-	if segs.District == "" && segs.level == LevelDistrict {
-		segs.District = trimmed
-	}
-	if segs.City == "" && segs.level == LevelCity {
-		segs.City = trimmed
-	}
+        return segs, nil
 
 	return segs, nil
 }
