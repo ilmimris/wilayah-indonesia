@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/ilmimris/wilayah-indonesia/internal/config"
 	"github.com/ilmimris/wilayah-indonesia/internal/ngramcache"
@@ -38,6 +39,11 @@ func main() {
 		os.Exit(1)
 	}
 	defer bootstrap.DB.Close()
+
+	if strings.TrimSpace(bootstrap.Matcher.SnapshotPath) == "" {
+		slog.Error("MATCHER_SNAPSHOT_PATH (or the configured snapshot path) is missing")
+		os.Exit(1)
+	}
 
 	refreshOpts := ingestionusecase.RefreshOptions{
 		WilayahSQLPath:    paths.WilayahSQL,
