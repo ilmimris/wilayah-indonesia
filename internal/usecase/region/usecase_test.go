@@ -9,6 +9,7 @@ import (
 	"github.com/ilmimris/wilayah-indonesia/internal/model"
 	repository "github.com/ilmimris/wilayah-indonesia/internal/repository"
 	sharederrors "github.com/ilmimris/wilayah-indonesia/internal/shared/errors"
+	regionmatcher "github.com/ilmimris/wilayah-indonesia/internal/usecase/region/matcher"
 )
 
 type fakeRepository struct {
@@ -90,7 +91,7 @@ func TestSearchUsesRepository(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search failed: %v", err)
 	}
-	if len(resp) != 1 || resp[0].City != "Jakarta" {
+	if len(resp.Items) != 1 || resp.Items[0].City != "Jakarta" {
 		t.Fatalf("unexpected response: %+v", resp)
 	}
 	if !repo.lastParams.Options.IncludeBPS || !repo.lastParams.Options.IncludeScores {
@@ -137,5 +138,94 @@ func TestRepositoryErrorPropagation(t *testing.T) {
 	_, err = uc.Search(context.Background(), model.SearchRequest{Query: "jakarta"})
 	if !errors.Is(err, repoErr) {
 		t.Fatalf("expected repo error to propagate, got %v", err)
+	}
+}
+
+func TestSearchHandlesAmbiguousMatcherInput(t *testing.T) {
+	facets := []regionmatcher.Facet{
+		{
+			RegionID:    "11.01.01.2001",
+			Subdistrict: "Keude Bakongan",
+			District:    "Bakongan",
+			City:        "Kabupaten Aceh Selatan",
+			Province:    "Aceh",
+		},
+		{
+			RegionID:    "11.02.01.2001",
+			Subdistrict: "Bakongan Timur",
+			District:    "Bakongan Timur",
+			City:        "Kabupaten Aceh Tengah",
+			Province:    "Aceh",
+		},
+	}
+	matcher, err := regionmatcher.NewMatcher(facets,
+		regionmatcher.WithLevelThreshold(regionmatcher.LevelProvince, 0.3),
+		regionmatcher.WithLevelThreshold(regionmatcher.LevelCity, 0.3),
+	)
+	if err != nil {
+		t.Fatalf("failed to build matcher: %v", err)
+	}
+
+	testCases := []struct {
+		name             string
+		query            string
+		expectSuggestion bool
+	}{
+		{"typo in query", "kbupaten aceh sealtan bakogan", true},
+		{"partial match", "aceh bakongan", true},
+		{"ambiguous match", "bakongan", true},
+	}
+
+	repo := &fakeRepository{capabilities: repository.RegionRepositoryCapabilities{HasBPSColumns: true, HasBPSIndex: true}}
+	uc, err := New(context.Background(), repo, RegionUseCaseOptions{Matcher: matcher, MatcherMinScore: 0.5})
+	if err != nil {
+		t.Fatalf("failed to construct use case: %v", err)
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := uc.Search(context.Background(), model.SearchRequest{Query: tc.query})
+			if err != nil {
+				t.Fatalf("search failed: %v", err)
+			}
+			if tc.expectSuggestion && resp.Suggestion == nil {
+				t.Errorf("expected suggestion for query %q", tc.query)
+			}
+		})
+	}
+}
+
+func TestSearchReturnsSuggestionButDoesNotApplyBelowThreshold(t *testing.T) {
+	facets := []regionmatcher.Facet{{
+		RegionID:    "11.01.01.2001",
+		Subdistrict: "Keude Bakongan",
+		District:    "Bakongan",
+		City:        "Kabupaten Aceh Selatan",
+		Province:    "Aceh",
+	}}
+	matcher, err := regionmatcher.NewMatcher(facets,
+		regionmatcher.WithLevelThreshold(regionmatcher.LevelProvince, 0.2),
+		regionmatcher.WithLevelThreshold(regionmatcher.LevelCity, 0.2),
+		regionmatcher.WithLevelThreshold(regionmatcher.LevelDistrict, 0.2),
+		regionmatcher.WithLevelThreshold(regionmatcher.LevelSubdistrict, 0.2),
+	)
+	if err != nil {
+		t.Fatalf("failed to build matcher: %v", err)
+	}
+	repo := &fakeRepository{capabilities: repository.RegionRepositoryCapabilities{HasBPSColumns: true, HasBPSIndex: true}}
+	uc, err := New(context.Background(), repo, RegionUseCaseOptions{Matcher: matcher, MatcherMinScore: 1.1})
+	if err != nil {
+		t.Fatalf("failed to construct use case: %v", err)
+	}
+
+	resp, err := uc.Search(context.Background(), model.SearchRequest{Query: "kabupaten aceh selatan bakongan keude bakongan"})
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	if repo.lastParams.Province != "" || repo.lastParams.City != "" {
+		t.Fatalf("expected repository params to remain unchanged, got %+v", repo.lastParams)
+	}
+	if resp.Suggestion == nil {
+		t.Fatalf("expected suggestion to be returned in response even when not applied to search params")
 	}
 }

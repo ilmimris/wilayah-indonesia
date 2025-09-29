@@ -19,7 +19,7 @@ RUN go mod download
 COPY . .
 
 # Build the binary with CGO enabled so DuckDB extensions can be loaded at runtime
-RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-w -s" -o regions-api ./cmd/api
+RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-w -s" -tags="no_duckdb_arrow,optimized" -o regions-api ./cmd/api
 
 # Stage 2: Final
 FROM gcr.io/distroless/cc-debian12
@@ -30,8 +30,11 @@ WORKDIR /app
 # Copy the binary from builder stage
 COPY --from=builder /app/regions-api .
 
-# Copy the database file
-COPY --from=builder /app/data/regions.duckdb ./data/regions.duckdb
+# Copy CA certificates so DuckDB can download extensions over HTTPS
+COPY --from=builder /etc/ssl/certs /etc/ssl/certs
+
+# Copy the data directory from builder stage
+COPY --from=builder /app/data ./data
 
 # Expose port
 EXPOSE 8080

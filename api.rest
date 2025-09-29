@@ -80,7 +80,31 @@ GET {{baseUrl}}/v1/search/postal/99999
 GET {{baseUrl}}/v1/search?q=serang&province=Banten
 
 ### 16. General search with field-only narrowing (no q)
-GET {{baseUrl}}/v1/search?subdistrict=Sukasari&district=Sukasari&city=Bandung&province=Jawa%20Barat
+GET {{baseUrl}}/v1/search?subdistrict=Sukasari&district=Sukasari&city=Bandung&province=Jawa%20Barat'&include_bps=true&include_scores=true
 
 ###
-GET {{baseUrl}}/v1/search?q='Halong'
+GET {{baseUrl}}/v1/search?q='Jalan Albezia III Blok G No. 4 RT 005 RW 002 Kelurahan Pondok Bambu Kecamatan Duren Sawit Jakarta Timur 13430''&include_bps=true&include_scores=true
+
+###
+GET {{baseUrl}}/v1/search?q='Toko Riko Riski Sindang SariToili Barat Toko depan mushola'&include_bps=true&include_scores=true
+
+###
+GET {{baseUrl}}/v1/search?q='jalan baruga no 6 kel tanamodindi kec mantikulore kota palu'&include_bps=true&include_scores=true
+
+###
+GET {{baseUrl}}/v1/search?q='Jln maloda kelurahan buluriulujadi Rt3Rw1 SDN buluri'&include_scores=true
+
+###
+GET {{baseUrl}}/v1/search?q='Rsud Undata Palu Jalan Re Martadinata Talise Mantikulore Penginapan zeta'&include_scores=true
+
+###
+GET {{baseUrl}}/v1/search?q='Jalan Imam Bonjol Dusun 2 Ds Lumpoknyo Luwuk RT 2'&include_scores=true
+
+###
+GET {{baseUrl}}/v1/search?q='Lingkungan ujung tebu kelurahan sukajaya kecamatan curug kota serangbanten'&include_scores=true
+
+###
+GET {{baseUrl}}/v1/search?q='Jl hapati hasan btn passo korang blok F8 mamuju'&include_scores=true
+
+###
+GET {{baseUrl}}/v1/search?q='Sala Hutu Kab Maluku Tengah Maluku'&include_scores=true

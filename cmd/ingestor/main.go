@@ -4,11 +4,20 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/ilmimris/wilayah-indonesia/internal/config"
+	"github.com/ilmimris/wilayah-indonesia/internal/ngramcache"
 	ingestionusecase "github.com/ilmimris/wilayah-indonesia/internal/usecase/ingestion"
 )
 
+// main is the program entry point for the ingestion worker.
+// It configures a bootstrap logger, resolves ingestion paths and options from environment,
+// initializes the worker, runs the ingestion workflow, and then builds and persists a matcher
+// snapshot from the Wilayah SQL source. The function logs progress and exits with a non-zero
+// main initializes the ingestion worker, executes the ingestion workflow, builds a matcher snapshot from the Wilayah SQL source, and persists that snapshot.
+//
+// with a non-zero status if initialization, ingestion, snapshot construction, or snapshot persistence fails.
 func main() {
 	bootstrapLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	slog.SetDefault(bootstrapLogger)
@@ -31,6 +40,11 @@ func main() {
 	}
 	defer bootstrap.DB.Close()
 
+	if strings.TrimSpace(bootstrap.Matcher.SnapshotPath) == "" {
+		slog.Error("MATCHER_SNAPSHOT_PATH (or the configured snapshot path) is missing")
+		os.Exit(1)
+	}
+
 	refreshOpts := ingestionusecase.RefreshOptions{
 		WilayahSQLPath:    paths.WilayahSQL,
 		PostalSQLPath:     paths.PostalSQL,
@@ -43,4 +57,16 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("Ingestion completed successfully")
+
+	slog.Info("Building matcher snapshot", "source", paths.WilayahSQL, "destination", bootstrap.Matcher.SnapshotPath)
+	snapshot, err := ngramcache.BuildSnapshotFromWilayah(paths.WilayahSQL)
+	if err != nil {
+		slog.Error("Failed to build matcher snapshot", "error", err)
+		os.Exit(1)
+	}
+	if err := ngramcache.WriteSnapshot(snapshot, bootstrap.Matcher.SnapshotPath); err != nil {
+		slog.Error("Failed to persist matcher snapshot", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("Matcher snapshot generated", "path", bootstrap.Matcher.SnapshotPath, "facets", len(snapshot.Facets), "dataset_hash", snapshot.Metadata.DatasetHash)
 }

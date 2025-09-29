@@ -15,7 +15,26 @@ type RegionResponse struct {
 	Scores      *entity.RegionScore `json:"scores,omitempty"`
 }
 
+// SuggestedMatch documents the matcher output for a specific administrative level.
+type SuggestedMatch struct {
+	Name       string  `json:"name"`
+	RegionID   string  `json:"region_id"`
+	Similarity float64 `json:"similarity"`
+	Fragment   string  `json:"fragment,omitempty"`
+}
+
+// Suggestion aggregates matcher results returned alongside search queries.
+type Suggestion struct {
+	Strategy    string          `json:"strategy"`
+	Score       float64         `json:"score"`
+	Province    *SuggestedMatch `json:"province,omitempty"`
+	City        *SuggestedMatch `json:"city,omitempty"`
+	District    *SuggestedMatch `json:"district,omitempty"`
+	Subdistrict *SuggestedMatch `json:"subdistrict,omitempty"`
+}
+
 // SearchResponse wraps a list of region responses for transport layers.
 type SearchResponse struct {
-	Items []RegionResponse `json:"items"`
+	Items      []RegionResponse `json:"items"`
+	Suggestion *Suggestion      `json:"suggestion,omitempty"`
 }

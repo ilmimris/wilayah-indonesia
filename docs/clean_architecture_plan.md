@@ -11,7 +11,7 @@ This document tracks the staged migration of the wilayah-indonesia project towar
 | Entrypoints | `cmd/api/main.go` | Boots Fiber HTTP server, wires DuckDB connection, registers routes directly with services | No configuration abstraction; logging, env handling inline |
 | Entrypoints | `cmd/ingestor/main.go` | Executes data ingestion SQL scripts, builds DuckDB tables, manages FTS indexes | Performs file IO, transformation, and schema management in one binary |
 | HTTP Layer | `internal/api/handler.go` | Fiber handlers parsing queries, calling `pkg/service.Service` | No separation between transport and application layers |
-| Business Logic | `pkg/service/service.go`, `pkg/service/errors.go` | Region search logic (FTS queries, option normalisation), domain models, error typing | Serves both HTTP and potential future adapters |
+| Business Logic | `pkg/service/service.go` | Region search logic (FTS queries, option normalisation), domain models, error typing | Serves both HTTP and potential future adapters |
 | Data Access | DuckDB SQL executed inside `pkg/service` | Direct SQL assembly and execution, schema introspection, FTS detection | Lacks explicit repository abstraction; queries embedded in service |
 | Data Refresh | `cmd/ingestor` helper functions (`execSQLFromFile`, `removeMySQLSyntax`) | Prepares dataset and FTS indexes | Could become a gateway/use case pair |
 | Tooling & Data | `data/`, `scripts/`, `regions-api/` | SQL sources, fetch scripts, API samples | Shared across runtimes |
@@ -37,7 +37,7 @@ This document tracks the staged migration of the wilayah-indonesia project towar
 | Entities | `internal/entity` | Structs from `pkg/service.Region`, SQL schema knowledge | Persistence representations aligned with DuckDB tables |
 | Models / DTO | `internal/model` | Request parsing currently in handlers, response structs in `pkg/service` | Transport layer contracts for HTTP and jobs |
 | Gateways | `internal/gateway/bps`, future caches | Not yet implemented | Placeholder for outbound integrations (BPS API, caching) |
-| Validation & Errors | Shared packages under `internal/shared` or reuse existing | `pkg/service/errors.go`, inline checks | Consistent error surface between delivery layers |
+| Validation & Errors | Shared packages under `internal/shared` or reuse existing | `internal/shared/errors/errors.go`, inline checks | Consistent error surface between delivery layers |
 | Tests | `test/` (integration), package-local `*_test.go` | `pkg/service/service_test.go`, scripts | Reorganise to mirror new packages with unit + integration coverage |
 
 Phase 1 deliverables complete the baseline understanding required to start refactoring.

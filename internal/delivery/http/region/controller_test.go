@@ -14,38 +14,39 @@ import (
 )
 
 type stubUseCase struct {
-	responses []model.RegionResponse
+	response  model.SearchResponse
 	returnErr error
 	lastReq   model.SearchRequest
 }
 
-func (s *stubUseCase) Search(ctx context.Context, req model.SearchRequest) ([]model.RegionResponse, error) {
+func (s *stubUseCase) Search(ctx context.Context, req model.SearchRequest) (model.SearchResponse, error) {
 	s.lastReq = req
-	return s.responses, s.returnErr
+	return s.response, s.returnErr
 }
 
-func (s *stubUseCase) SearchByDistrict(ctx context.Context, district, city, province string, opts model.SearchOptions) ([]model.RegionResponse, error) {
+func (s *stubUseCase) SearchByDistrict(ctx context.Context, district, city, province string, opts model.SearchOptions) (model.SearchResponse, error) {
 	return s.Search(ctx, model.SearchRequest{District: district, City: city, Province: province, Options: opts})
 }
 
-func (s *stubUseCase) SearchBySubdistrict(ctx context.Context, subdistrict, district, city, province string, opts model.SearchOptions) ([]model.RegionResponse, error) {
+func (s *stubUseCase) SearchBySubdistrict(ctx context.Context, subdistrict, district, city, province string, opts model.SearchOptions) (model.SearchResponse, error) {
 	return s.Search(ctx, model.SearchRequest{Subdistrict: subdistrict, District: district, City: city, Province: province, Options: opts})
 }
 
-func (s *stubUseCase) SearchByCity(ctx context.Context, city string, opts model.SearchOptions) ([]model.RegionResponse, error) {
+func (s *stubUseCase) SearchByCity(ctx context.Context, city string, opts model.SearchOptions) (model.SearchResponse, error) {
 	return s.Search(ctx, model.SearchRequest{City: city, Options: opts})
 }
 
-func (s *stubUseCase) SearchByProvince(ctx context.Context, province string, opts model.SearchOptions) ([]model.RegionResponse, error) {
+func (s *stubUseCase) SearchByProvince(ctx context.Context, province string, opts model.SearchOptions) (model.SearchResponse, error) {
 	return s.Search(ctx, model.SearchRequest{Province: province, Options: opts})
 }
 
-func (s *stubUseCase) SearchByPostalCode(ctx context.Context, postalCode string, opts model.SearchOptions) ([]model.RegionResponse, error) {
-	return s.Search(ctx, model.SearchRequest{Options: opts})
+func (s *stubUseCase) SearchByPostalCode(ctx context.Context, postalCode string, opts model.SearchOptions) (model.SearchResponse, error) {
+	// Use Query to carry the postal code since SearchRequest has no dedicated field.
+	return s.Search(ctx, model.SearchRequest{Query: postalCode, Options: opts})
 }
 
 func TestSearchHandlerSuccess(t *testing.T) {
-	uc := &stubUseCase{responses: []model.RegionResponse{{ID: "1", City: "Jakarta"}}}
+	uc := &stubUseCase{response: model.SearchResponse{Items: []model.RegionResponse{{ID: "1", City: "Jakarta"}}}}
 	controller := NewController(uc)
 	app := fiber.New()
 	controller.Register(app)

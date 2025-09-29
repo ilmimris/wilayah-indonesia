@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // Result captures the outcome of a fuzzy search.
@@ -50,7 +51,8 @@ func WithN[T comparable](n int) Option[T] {
 	}
 }
 
-// WithPadLen sets the number of padding characters to apply to each side.
+// WithPadLen returns an Option that configures the number of padding characters applied to each side of indexed keys.
+// The provided padLen must be >= 0; if it is negative the Option returns an error.
 func WithPadLen[T comparable](padLen int) Option[T] {
 	return func(ng *NGram[T]) error {
 		if padLen < 0 {
@@ -61,7 +63,10 @@ func WithPadLen[T comparable](padLen int) Option[T] {
 	}
 }
 
-// WithPadChar configures the character used for padding.
+// WithPadChar returns an Option that sets the rune used to build the padding string for the index.
+// WithPadChar returns an Option that sets the padding character used when building
+// padded n-gram keys for the index. It validates that padChar is not the zero rune
+// and returns an error if validation fails.
 func WithPadChar[T comparable](padChar rune) Option[T] {
 	return func(ng *NGram[T]) error {
 		if padChar == 0 {
@@ -72,13 +77,25 @@ func WithPadChar[T comparable](padChar rune) Option[T] {
 	}
 }
 
-// WithKey registers a custom function for extracting the string key of an item.
+// WithKey returns an Option that sets the function used to extract a string key from an item.
+// If the provided key function is nil the option will return an error when applied.
+// When the item type T is a string, this also configures the index to normalize string queries
+// WithKey returns an Option that sets the function used to extract a string key from an item.
+// It validates that the provided key is non-nil and assigns it to the index. If the item type T is
+// function to incoming query strings via ng.normalizeQuery.
 func WithKey[T comparable](key func(T) string) Option[T] {
 	return func(ng *NGram[T]) error {
 		if key == nil {
 			return errors.New("key function cannot be nil")
 		}
 		ng.key = key
+		var zero T
+		if _, ok := any(zero).(string); ok {
+			ng.normalizeQuery = func(s string) string {
+				val, _ := any(s).(T)
+				return key(val)
+			}
+		}
 		return nil
 	}
 }
@@ -91,26 +108,46 @@ type NGram[T comparable] struct {
 	padLen    int
 	padChar   rune
 
-	key func(T) string
+	key            func(T) string
+	normalizeQuery func(string) string
 
 	padding string
 	grams   map[string]map[T]int
 	length  map[T]int
 	items   map[T]struct{}
+
+	// Add cache for frequently searched queries
+	cache     map[string][]Result[T]
+	cacheMu   sync.RWMutex
+	cacheSize int
 }
 
-// New constructs an NGram index with the provided items and options.
+// New creates an NGram index configured by the supplied options and populated with the provided items.
+// 
+// The function applies each Option in order and returns an error if any option fails. It establishes sensible defaults
+// (N = 3, warp = 1.0, threshold = 0, padChar = '$', padLen defaults to N-1 when unset) and initializes internal
+// structures including gram buckets, item length/map, item set, and a results cache (default size 1000). If an initial
+// New creates an NGram index configured for fuzzy n-gram similarity searches.
+// 
+// The function constructs an NGram with sensible defaults (threshold 0, warp 1.0, N=3,
+// padChar '$', padLen computed as N-1 when unset), initializes internal maps and a
+// query cache, applies the provided Option functions in order, and validates options.
+// If padLen remains >= N after options, New returns an error. If a non-empty items
+// slice is provided, those items are indexed before the constructed index is returned.
 func New[T comparable](items []T, options ...Option[T]) (*NGram[T], error) {
 	ng := &NGram[T]{
-		threshold: 0,
-		warp:      1.0,
-		N:         3,
-		padLen:    -1,
-		padChar:   '$',
-		key:       defaultKey[T],
-		grams:     make(map[string]map[T]int),
-		length:    make(map[T]int),
-		items:     make(map[T]struct{}),
+		threshold:      0,
+		warp:           1.0,
+		N:              3,
+		padLen:         -1,
+		padChar:        '$',
+		key:            defaultKey[T],
+		normalizeQuery: func(s string) string { return s },
+		grams:          make(map[string]map[T]int),
+		length:         make(map[T]int),
+		items:          make(map[T]struct{}),
+		cache:          make(map[string][]Result[T]),
+		cacheSize:      1000, // Default cache size
 	}
 
 	for _, opt := range options {
@@ -187,7 +224,7 @@ func (ng *NGram[T]) Add(item T) {
 	grams := ng.split(padded)
 
 	ng.items[item] = struct{}{}
-	ng.length[item] = len([]rune(padded))
+	ng.length[item] = len(grams)
 
 	for _, gram := range grams {
 		bucket, ok := ng.grams[gram]
@@ -245,37 +282,18 @@ func (ng *NGram[T]) Clear() {
 	ng.items = make(map[T]struct{})
 	ng.grams = make(map[string]map[T]int)
 	ng.length = make(map[T]int)
+
+	// Clear cache as well
+	ng.cacheMu.Lock()
+	ng.cache = make(map[string][]Result[T])
+	ng.cacheMu.Unlock()
 }
 
 // ItemsSharingNGrams returns the number of shared n-grams for every matching item.
 func (ng *NGram[T]) ItemsSharingNGrams(query string) map[T]int {
-	shared := make(map[T]int)
-	remaining := make(map[string]map[T]int)
-
-	for _, gram := range ng.split(ng.pad(query)) {
-		bucket, ok := ng.grams[gram]
-		if !ok {
-			continue
-		}
-
-		rem := remaining[gram]
-		if rem == nil {
-			rem = make(map[T]int)
-			remaining[gram] = rem
-		}
-
-		for item, count := range bucket {
-			if _, exists := rem[item]; !exists {
-				rem[item] = count
-			}
-			if rem[item] > 0 {
-				rem[item]--
-				shared[item]++
-			}
-		}
-	}
-
-	return shared
+	normalized := ng.normalizeQuery(query)
+	grams := ng.split(ng.pad(normalized))
+	return ng.itemsSharingFromGrams(grams)
 }
 
 // Search returns the items whose similarity with the query is at least the provided threshold.
@@ -284,21 +302,43 @@ func (ng *NGram[T]) Search(query string, threshold ...float64) []Result[T] {
 		return nil
 	}
 
+	query = ng.normalizeQuery(query)
+	useCache := len(threshold) == 0
+
+	// Check cache first
+	if useCache {
+		ng.cacheMu.RLock()
+		if cached, found := ng.cache[query]; found {
+			ng.cacheMu.RUnlock()
+			return cached
+		}
+		ng.cacheMu.RUnlock()
+	}
+
 	min := ng.threshold
 	if len(threshold) > 0 {
 		min = threshold[0]
 	}
 
-	shared := ng.ItemsSharingNGrams(query)
+	padded := ng.pad(query)
+	grams := ng.split(padded)
+	shared := ng.itemsSharingFromGrams(grams)
 	if len(shared) == 0 {
+		if useCache {
+			ng.cacheMu.Lock()
+			if _, ok := ng.cache[query]; ok || len(ng.cache) < ng.cacheSize {
+				ng.cache[query] = nil
+			}
+			ng.cacheMu.Unlock()
+		}
 		return nil
 	}
 
-	paddedLen := len([]rune(ng.pad(query)))
+	queryGramCount := len(grams)
 	results := make([]Result[T], 0, len(shared))
 
 	for item, samegrams := range shared {
-		allgrams := paddedLen + ng.length[item] - (2 * ng.N) - samegrams + 2
+		allgrams := queryGramCount + ng.length[item] - samegrams
 		if allgrams <= 0 {
 			continue
 		}
@@ -314,6 +354,14 @@ func (ng *NGram[T]) Search(query string, threshold ...float64) []Result[T] {
 		}
 		return results[i].Similarity > results[j].Similarity
 	})
+
+	if useCache {
+		ng.cacheMu.Lock()
+		if _, ok := ng.cache[query]; ok || len(ng.cache) < ng.cacheSize {
+			ng.cache[query] = results
+		}
+		ng.cacheMu.Unlock()
+	}
 
 	return results
 }
@@ -395,6 +443,42 @@ func (ng *NGram[T]) split(s string) []string {
 	return grams
 }
 
+func (ng *NGram[T]) itemsSharingFromGrams(grams []string) map[T]int {
+	if len(grams) == 0 {
+		return nil
+	}
+
+	queryCounts := make(map[string]int, len(grams))
+	for _, gram := range grams {
+		queryCounts[gram]++
+	}
+
+	shared := make(map[T]int, len(queryCounts))
+	for gram, queryCount := range queryCounts {
+		bucket, ok := ng.grams[gram]
+		if !ok {
+			continue
+		}
+		for item, itemCount := range bucket {
+			if queryCount < itemCount {
+				shared[item] += queryCount
+				continue
+			}
+			shared[item] += itemCount
+		}
+	}
+
+	if len(shared) == 0 {
+		return nil
+	}
+
+	return shared
+}
+
+// defaultKey returns a string representation for item.
+// defaultKey returns the string representation of item.
+// defaultKey produces a string key for the given item.
+// If the item is a string, it is returned unchanged; if it implements fmt.Stringer its String method is used; otherwise fmt.Sprint is used.
 func defaultKey[T comparable](item T) string {
 	switch v := any(item).(type) {
 	case string:

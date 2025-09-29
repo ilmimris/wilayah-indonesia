@@ -10,6 +10,8 @@ SQL_FILE=$(DATA_DIR)/wilayah.sql
 KODEPOS_FILE=$(DATA_DIR)/wilayah_kodepos.sql
 BPS_FILE=$(DATA_DIR)/bps_wilayah.sql
 PERIODE?=latest
+GO_TAGS?=no_duckdb_arrow,optimized
+MATCHER_SNAPSHOT_PATH?=$(DATA_DIR)/matcher_snapshot.json
 
 # Default target
 .PHONY: all
@@ -18,17 +20,17 @@ all: build
 # Build the API binary
 .PHONY: build
 build:
-	go build -o $(BINARY) ./$(MAIN_DIR)
+	go build -tags="$(GO_TAGS)" -o $(BINARY) ./$(MAIN_DIR)
 
 # Run the API server
 .PHONY: run
 run:
-	go run ./$(MAIN_DIR)
+	MATCHER_SNAPSHOT_PATH=${MATCHER_SNAPSHOT_PATH} go run -tags="$(GO_TAGS)" ./$(MAIN_DIR)
 
 # Run the data ingestor
 .PHONY: ingest
 ingest:
-	go run ./$(INGESTOR_DIR)
+	MATCHER_SNAPSHOT_PATH=${MATCHER_SNAPSHOT_PATH} go run -tags="$(GO_TAGS)" ./$(INGESTOR_DIR)
 # Download the administrative data SQL file
 .PHONY: download-data
 download-data: download-admin-data download-kodepos-data fetch-bps
@@ -56,7 +58,7 @@ fetch-bps:
 # Run tests
 .PHONY: test
 test:
-	go test -v ./...
+	go test -tags="$(GO_TAGS)" -v ./...
 # Clean build artifacts
 .PHONY: clean
 clean:
@@ -79,7 +81,7 @@ docker-build:
 # Run Docker container
 .PHONY: docker-run
 docker-run:
-	docker run   -p 8080:8080 $(BINARY)
+	docker run --rm -e MATCHER_SNAPSHOT_PATH=$(MATCHER_SNAPSHOT_PATH) -e DB_PATH=$(DB_FILE) -p 8080:8080 $(BINARY)
 
 # Help
 .PHONY: help

@@ -1,4 +1,12 @@
-data/*.sql
 PLAN.md
 TESTING.md
 test_endpoints.sh
+.gemini
+.github
+.gocache
+.vscode
+scripts/*
+tmp/*
+docs/*
+helm-chart/*
+*.deb
