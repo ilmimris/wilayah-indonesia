@@ -3,7 +3,8 @@
         "fileName": [
             "AGENTS.md",
             "CONTEXT.md",
-            "GEMINI.md"
+            "GEMINI.md",
+            "GUIDE.md",
         ],
         "includeDirectories": [
             ".",
