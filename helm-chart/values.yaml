@@ -124,6 +124,18 @@ env:
   PORT: "8080"
   # Path to the database file
   DB_PATH: "/app/data/regions.duckdb"
+  # Path to the matcher snapshot JSON
+  MATCHER_SNAPSHOT_PATH: "/app/data/matcher_snapshot.json"
+  # Minimum combined score required before auto-filling hierarchical filters
+  MATCHER_MIN_SCORE: "0.8"
+  # Similarity thresholds per administrative level
+  MATCHER_THRESHOLD_PROVINCE: "0.4"
+  MATCHER_THRESHOLD_CITY: "0.5"
+  MATCHER_THRESHOLD_DISTRICT: "0.58"
+  MATCHER_THRESHOLD_SUBDISTRICT: "0.45"
+  # Query fragment combination size and parallel search budget
+  MATCHER_WORD_COMBO_SIZE: "3"
+  MATCHER_PARALLEL_TOP_K: "50"
 
 # Network policy configuration
 networkPolicy:

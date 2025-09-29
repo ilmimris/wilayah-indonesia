@@ -178,6 +178,14 @@ The following table lists the configurable parameters of the chart and their def
 | --------- | ----------- | ------- |
 | `env.PORT` | Port on which the application listens | `"8080"` |
 | `env.DB_PATH` | Path to the database file | `"/data/regions.duckdb"` |
+| `env.MATCHER_SNAPSHOT_PATH` | Location of the matcher snapshot JSON mounted in the container | `"/app/data/matcher_snapshot.json"` |
+| `env.MATCHER_MIN_SCORE` | Minimum combined suggestion score required before auto-filling filters | `"0.8"` |
+| `env.MATCHER_THRESHOLD_PROVINCE` | Province-level similarity threshold applied to suggestions | `"0.4"` |
+| `env.MATCHER_THRESHOLD_CITY` | City/regency similarity threshold applied to suggestions | `"0.5"` |
+| `env.MATCHER_THRESHOLD_DISTRICT` | District similarity threshold applied to suggestions | `"0.58"` |
+| `env.MATCHER_THRESHOLD_SUBDISTRICT` | Subdistrict similarity threshold applied to suggestions | `"0.45"` |
+| `env.MATCHER_WORD_COMBO_SIZE` | Maximum contiguous word combination size during query fragmentation | `"3"` |
+| `env.MATCHER_PARALLEL_TOP_K` | Number of matches retained per level in parallel fragment searches | `"50"` |
 
 For more details on configuring the chart, refer to the [values.yaml](values.yaml) file.
 

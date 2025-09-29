@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 // Result captures the outcome of a fuzzy search.
@@ -77,6 +78,18 @@ func WithPadChar[T comparable](padChar rune) Option[T] {
 	}
 }
 
+// WithMaxResults caps the number of results returned by Search. A value of zero leaves
+// the result set unbounded.
+func WithMaxResults[T comparable](max int) Option[T] {
+	return func(ng *NGram[T]) error {
+		if max < 0 {
+			return fmt.Errorf("max_results must be non-negative: %d", max)
+		}
+		ng.maxResults = max
+		return nil
+	}
+}
+
 // WithKey returns an Option that sets the function used to extract a string key from an item.
 // If the provided key function is nil the option will return an error when applied.
 // When the item type T is a string, this also configures the index to normalize string queries
@@ -120,15 +133,17 @@ type NGram[T comparable] struct {
 	cache     map[string][]Result[T]
 	cacheMu   sync.RWMutex
 	cacheSize int
+
+	maxResults int
 }
 
 // New creates an NGram index configured by the supplied options and populated with the provided items.
-// 
+//
 // The function applies each Option in order and returns an error if any option fails. It establishes sensible defaults
 // (N = 3, warp = 1.0, threshold = 0, padChar = '$', padLen defaults to N-1 when unset) and initializes internal
 // structures including gram buckets, item length/map, item set, and a results cache (default size 1000). If an initial
 // New creates an NGram index configured for fuzzy n-gram similarity searches.
-// 
+//
 // The function constructs an NGram with sensible defaults (threshold 0, warp 1.0, N=3,
 // padChar '$', padLen computed as N-1 when unset), initializes internal maps and a
 // query cache, applies the provided Option functions in order, and validates options.
@@ -148,6 +163,7 @@ func New[T comparable](items []T, options ...Option[T]) (*NGram[T], error) {
 		items:          make(map[T]struct{}),
 		cache:          make(map[string][]Result[T]),
 		cacheSize:      1000, // Default cache size
+		maxResults:     50,
 	}
 
 	for _, opt := range options {
@@ -182,6 +198,7 @@ func (ng *NGram[T]) Copy(items []T) (*NGram[T], error) {
 		WithPadLen[T](ng.padLen),
 		WithPadChar[T](ng.padChar),
 		WithKey[T](ng.key),
+		WithMaxResults[T](ng.maxResults),
 	)
 	if err != nil {
 		return nil, err
@@ -303,7 +320,7 @@ func (ng *NGram[T]) Search(query string, threshold ...float64) []Result[T] {
 	}
 
 	query = ng.normalizeQuery(query)
-	useCache := len(threshold) == 0
+	useCache := len(threshold) == 0 && utf8.RuneCountInString(query) >= ng.N
 
 	// Check cache first
 	if useCache {
@@ -354,6 +371,10 @@ func (ng *NGram[T]) Search(query string, threshold ...float64) []Result[T] {
 		}
 		return results[i].Similarity > results[j].Similarity
 	})
+
+	if ng.maxResults > 0 && len(results) > ng.maxResults {
+		results = results[:ng.maxResults]
+	}
 
 	if useCache {
 		ng.cacheMu.Lock()

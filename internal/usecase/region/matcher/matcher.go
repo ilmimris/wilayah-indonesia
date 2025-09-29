@@ -167,10 +167,10 @@ func WithSuggestionTimeout(d time.Duration) Option {
 // WithPercolatorWeights returns an Option that applies per-level percolator weights to the matcher configuration.
 // The provided map's keys are Levels and values are non-negative weights. An empty map is ignored and any
 // WithPercolatorWeights returns an Option that sets percolator weights from the provided map.
- // 
- // The provided map's keys are levels and values are weights. Negative weights are ignored;
- // non-negative weights overwrite or populate entries in the matcher's configuration. If the
- // matcherConfig's weights map is nil, it will be allocated. An empty input map is a no-op.
+//
+// The provided map's keys are levels and values are weights. Negative weights are ignored;
+// non-negative weights overwrite or populate entries in the matcher's configuration. If the
+// matcherConfig's weights map is nil, it will be allocated. An empty input map is a no-op.
 func WithPercolatorWeights(weights map[Level]float64) Option {
 	return func(cfg *matcherConfig) {
 		if len(weights) == 0 {
@@ -249,8 +249,8 @@ func WithWordComboSize(size int) Option {
 
 var defaultThresholds = map[Level]float64{
 	LevelSubdistrict: 0.45,
-	LevelDistrict:    0.45,
-	LevelCity:        0.4,
+	LevelDistrict:    0.58,
+	LevelCity:        0.5,
 	LevelProvince:    0.4,
 }
 
@@ -263,7 +263,7 @@ var defaultWeights = map[Level]float64{
 	LevelSubdistrict: 0.25,
 }
 
-const defaultMinCombinedScore = 0.6
+const defaultMinCombinedScore = 0.8
 const defaultPrefixScoreBoost = 0.01
 const defaultMatchFillBonus = 0.03
 
@@ -295,7 +295,7 @@ func NewMatcher(facets []Facet, opts ...Option) (*Matcher, error) {
 		cacheSize:        1000,
 		prefixScoreBoost: defaultPrefixScoreBoost,
 		matchFillBonus:   defaultMatchFillBonus,
-		wordComboSize:    2, // Default to 2
+		wordComboSize:    3,
 	}
 	for level, value := range defaultThresholds {
 		cfg.thresholds[level] = value
@@ -490,6 +490,17 @@ func (m *Matcher) Suggest(query string) Suggestion {
 	return suggestion
 }
 
+// ThresholdForLevel returns the similarity threshold configured for the given level.
+func (m *Matcher) ThresholdForLevel(level Level) float64 {
+	if m == nil {
+		return 0
+	}
+	if threshold, ok := m.thresholds[level]; ok {
+		return threshold
+	}
+	return 0
+}
+
 func (m *Matcher) percolateMatches(ctx context.Context, fragments []string) (Suggestion, bool) {
 	results := make(map[Level][]Match, len(levelOrder))
 	var mu sync.Mutex
@@ -597,6 +608,11 @@ func mergeMatches(existing, additions []Match, limit int) []Match {
 	combined = append(combined, additions...)
 	sort.SliceStable(combined, func(i, j int) bool {
 		if combined[i].Similarity == combined[j].Similarity {
+			pi := provinceHintScore(combined[i])
+			pj := provinceHintScore(combined[j])
+			if pi != pj {
+				return pi > pj
+			}
 			return combined[i].RegionID < combined[j].RegionID
 		}
 		return combined[i].Similarity > combined[j].Similarity
@@ -616,6 +632,23 @@ func mergeMatches(existing, additions []Match, limit int) []Match {
 		}
 	}
 	return uniq
+}
+
+func provinceHintScore(match Match) int {
+	if match.Level != LevelDistrict {
+		return 0
+	}
+	if match.Fragment == "" || match.Province == "" {
+		return 0
+	}
+	province := normalize(match.Province)
+	if province == "" {
+		return 0
+	}
+	if strings.Contains(match.Fragment, province) {
+		return 1
+	}
+	return 0
 }
 
 func (m *Matcher) sequentialFallback(fragments []string) Suggestion {
@@ -729,7 +762,7 @@ func harmonizeSuggestion(s *Suggestion) {
 // consistentHierarchy reports whether the provided region codes form a consistent
 // hierarchical chain from province through city, district, to subdistrict.
 // Codes should be supplied in that order (province, city, district, subdistrict);
-/// and false otherwise.
+// / and false otherwise.
 func consistentHierarchy(codes ...string) bool {
 	return regionhierarchy.IsConsistentHierarchy(codes...)
 }
@@ -762,14 +795,14 @@ func scoreSuggestion(s Suggestion) float64 {
 // and returns up to the first 5 words. For shorter queries it adds the normalized whole query, splits by a set
 // of common separators to add parts, and also adds individual words and 2-word combinations. The function
 // deduplicates fragments, enforces caps to avoid explosion (limits on parts, words and combinations), and
-// candidateFragments returns up to five normalized query fragments used for matching.
+// candidateFragments returns up to ten normalized query fragments used for matching.
 // For queries longer than 100 characters it returns up to the first five words from
 // the normalized prefix (first 50 characters). For shorter queries it builds a
 // deduplicated set of fragments including the normalized whole query, parts split
 // by common separators, individual words, and contiguous word combinations up to
 // wordComboSize. Construction is capped to avoid explosion (internal cap ≈ 20
 // unique fragments), and the final fragments are sorted by length and truncated
-// to at most five entries.
+// to at most ten entries.
 func candidateFragments(query string, wordComboSize int) []string {
 	// For very long queries, extract only the most relevant parts
 	if len(query) > 100 {
@@ -843,9 +876,9 @@ func candidateFragments(query string, wordComboSize int) []string {
 	}
 	sort.Slice(fragments, func(i, j int) bool { return len(fragments[i]) > len(fragments[j]) })
 
-	// Limit number of fragments for performance (reduced from 10 to 5)
-	if len(fragments) > 5 {
-		fragments = fragments[:5]
+	// Limit number of fragments for performance while keeping broad coverage.
+	if len(fragments) > 10 {
+		fragments = fragments[:10]
 	}
 
 	return fragments

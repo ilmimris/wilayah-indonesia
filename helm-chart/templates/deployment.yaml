@@ -44,10 +44,10 @@ spec:
               containerPort: {{ .Values.env.PORT | default 8080 }}
               protocol: TCP
           env:
-            - name: PORT
-              value: {{ .Values.env.PORT | quote }}
-            - name: DB_PATH
-              value: {{ .Values.env.DB_PATH | quote }}
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           livenessProbe:

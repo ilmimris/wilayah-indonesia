@@ -229,3 +229,39 @@ func TestSearchReturnsSuggestionButDoesNotApplyBelowThreshold(t *testing.T) {
 		t.Fatalf("expected suggestion to be returned in response even when not applied to search params")
 	}
 }
+
+func TestApplyHierarchicalSuggestionsRespectsThresholds(t *testing.T) {
+	matcherStrict, err := regionmatcher.NewMatcher(nil,
+		regionmatcher.WithLevelThreshold(regionmatcher.LevelProvince, 0.9),
+		regionmatcher.WithLevelThreshold(regionmatcher.LevelCity, 0.9),
+		regionmatcher.WithLevelThreshold(regionmatcher.LevelDistrict, 0.9),
+		regionmatcher.WithLevelThreshold(regionmatcher.LevelSubdistrict, 0.9),
+	)
+	if err != nil {
+		t.Fatalf("failed to construct matcher: %v", err)
+	}
+	suggestion := regionmatcher.Suggestion{
+		Province:    &regionmatcher.Match{Level: regionmatcher.LevelProvince, Name: "Aceh", Similarity: 0.85},
+		City:        &regionmatcher.Match{Level: regionmatcher.LevelCity, Name: "Kabupaten Aceh Barat", Province: "Aceh", Similarity: 0.85},
+		District:    &regionmatcher.Match{Level: regionmatcher.LevelDistrict, Name: "Meureubo", Province: "Aceh", City: "Kabupaten Aceh Barat", Similarity: 0.85},
+		Subdistrict: &regionmatcher.Match{Level: regionmatcher.LevelSubdistrict, Name: "Cot", Province: "Aceh", City: "Kabupaten Aceh Barat", District: "Meureubo", Similarity: 0.85},
+	}
+
+	ucStrict := &regionUseCase{matcher: matcherStrict}
+	req := model.SearchRequest{}
+	ucStrict.applyHierarchicalSuggestions(suggestion, &req)
+	if req.Province != "" || req.City != "" || req.District != "" || req.Subdistrict != "" {
+		t.Fatalf("expected no fields to be auto-filled when below thresholds, got %+v", req)
+	}
+
+	matcherLoose, err := regionmatcher.NewMatcher(nil)
+	if err != nil {
+		t.Fatalf("failed to construct matcher: %v", err)
+	}
+	ucLoose := &regionUseCase{matcher: matcherLoose}
+	reqLoose := model.SearchRequest{}
+	ucLoose.applyHierarchicalSuggestions(suggestion, &reqLoose)
+	if reqLoose.Province != "Aceh" || reqLoose.City != "Kabupaten Aceh Barat" || reqLoose.District != "Meureubo" || reqLoose.Subdistrict != "Cot" {
+		t.Fatalf("expected fields to be auto-filled when thresholds permit, got %+v", reqLoose)
+	}
+}

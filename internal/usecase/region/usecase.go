@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/ilmimris/wilayah-indonesia/internal/entity"
 	"github.com/ilmimris/wilayah-indonesia/internal/model"
@@ -45,14 +46,14 @@ type regionUseCase struct {
 // New creates a RegionUseCase backed by the provided repository.
 // It retrieves repository capabilities and returns an error if that fails.
 // If ctx is nil, context.Background() is used. If opts.Logger is nil, slog.Default() is used.
-// MatcherMinScore defaults to 0.6 when opts.MatcherMinScore is zero or negative.
+// MatcherMinScore defaults to 0.8 when opts.MatcherMinScore is zero or negative.
 // The returned use case is configured with the provided repository, a LimitNormalizer
 // New creates a RegionUseCase wired to the given repository and configured by opts.
 // It queries the repository for capabilities (returning an error if that call fails),
 // uses opts.Logger or slog.Default() when nil, and constructs a limit normalizer from
 // opts.DefaultLimit and opts.MaxLimit. If opts.MatcherMinScore is zero or negative,
 // a default min score of 0.6 is used. The returned use case will include opts.Matcher
-// to 0.6 when the provided value is less than or equal to zero.
+// to 0.8 when the provided value is less than or equal to zero.
 func New(ctx context.Context, repo repository.RegionRepository, opts RegionUseCaseOptions) (RegionUseCase, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -69,7 +70,7 @@ func New(ctx context.Context, repo repository.RegionRepository, opts RegionUseCa
 
 	minScore := opts.MatcherMinScore
 	if minScore <= 0 {
-		minScore = 0.6
+		minScore = 0.8
 	}
 
 	return &regionUseCase{
@@ -131,11 +132,47 @@ func (uc *regionUseCase) applySuggestion(query string, req *model.SearchRequest)
 		return nil
 	}
 	suggestion := uc.matcher.Suggest(query)
+	uc.logSuggestion(query, suggestion)
 	modelSuggestion := convertSuggestion(suggestion)
 	if suggestion.Strategy == "percolator" && suggestion.Score >= uc.matcherMinScore {
 		uc.applyHierarchicalSuggestions(suggestion, req)
 	}
 	return modelSuggestion
+}
+
+func (uc *regionUseCase) meetsThreshold(match *regionmatcher.Match) bool {
+	if match == nil || uc.matcher == nil {
+		return false
+	}
+	threshold := uc.matcher.ThresholdForLevel(match.Level)
+	return match.Similarity >= threshold
+}
+
+func (uc *regionUseCase) logSuggestion(query string, suggestion regionmatcher.Suggestion) {
+	if uc.logger == nil || uc.matcher == nil {
+		return
+	}
+	uc.logger.Debug("matcher suggestion evaluated",
+		"query_length", utf8.RuneCountInString(query),
+		"strategy", suggestion.Strategy,
+		"score", suggestion.Score,
+		"min_score", uc.matcherMinScore,
+		"province_similarity", similarityOrZero(suggestion.Province),
+		"city_similarity", similarityOrZero(suggestion.City),
+		"district_similarity", similarityOrZero(suggestion.District),
+		"subdistrict_similarity", similarityOrZero(suggestion.Subdistrict),
+		"province_threshold", uc.matcher.ThresholdForLevel(regionmatcher.LevelProvince),
+		"city_threshold", uc.matcher.ThresholdForLevel(regionmatcher.LevelCity),
+		"district_threshold", uc.matcher.ThresholdForLevel(regionmatcher.LevelDistrict),
+		"subdistrict_threshold", uc.matcher.ThresholdForLevel(regionmatcher.LevelSubdistrict),
+	)
+}
+
+func similarityOrZero(match *regionmatcher.Match) float64 {
+	if match == nil {
+		return 0
+	}
+	return match.Similarity
 }
 
 func (uc *regionUseCase) applyHierarchicalSuggestions(s regionmatcher.Suggestion, req *model.SearchRequest) {
@@ -152,45 +189,45 @@ func (uc *regionUseCase) applyHierarchicalSuggestions(s regionmatcher.Suggestion
 		req.District = uc.extractDistrictName(s)
 	}
 	// Apply subdistrict suggestion
-	if req.Subdistrict == "" && s.Subdistrict != nil {
+	if req.Subdistrict == "" && uc.meetsThreshold(s.Subdistrict) {
 		req.Subdistrict = s.Subdistrict.Name
 	}
 }
 
 func (uc *regionUseCase) extractProvinceName(s regionmatcher.Suggestion) string {
-	if s.Province != nil && s.Province.Name != "" {
+	if uc.meetsThreshold(s.Province) && s.Province.Name != "" {
 		return s.Province.Name
 	}
-	if s.City != nil && s.City.Province != "" {
+	if uc.meetsThreshold(s.City) && s.City.Province != "" {
 		return s.City.Province
 	}
-	if s.District != nil && s.District.Province != "" {
+	if uc.meetsThreshold(s.District) && s.District.Province != "" {
 		return s.District.Province
 	}
-	if s.Subdistrict != nil && s.Subdistrict.Province != "" {
+	if uc.meetsThreshold(s.Subdistrict) && s.Subdistrict.Province != "" {
 		return s.Subdistrict.Province
 	}
 	return ""
 }
 
 func (uc *regionUseCase) extractCityName(s regionmatcher.Suggestion) string {
-	if s.City != nil && s.City.Name != "" {
+	if uc.meetsThreshold(s.City) && s.City.Name != "" {
 		return s.City.Name
 	}
-	if s.District != nil && s.District.City != "" {
+	if uc.meetsThreshold(s.District) && s.District.City != "" {
 		return s.District.City
 	}
-	if s.Subdistrict != nil && s.Subdistrict.City != "" {
+	if uc.meetsThreshold(s.Subdistrict) && s.Subdistrict.City != "" {
 		return s.Subdistrict.City
 	}
 	return ""
 }
 
 func (uc *regionUseCase) extractDistrictName(s regionmatcher.Suggestion) string {
-	if s.District != nil && s.District.Name != "" {
+	if uc.meetsThreshold(s.District) && s.District.Name != "" {
 		return s.District.Name
 	}
-	if s.Subdistrict != nil && s.Subdistrict.District != "" {
+	if uc.meetsThreshold(s.Subdistrict) && s.Subdistrict.District != "" {
 		return s.Subdistrict.District
 	}
 	return ""

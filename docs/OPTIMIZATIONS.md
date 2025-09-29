@@ -12,15 +12,21 @@ We've implemented several key optimizations to reduce the API latency from over 
 ### 2. Reduced Candidate Processing
 - Limited the number of candidate fragments processed in the matcher
 - Skip processing fragments with less than 2 characters
-- Limited the number of fragments to 5 per query (reduced from 10)
+- Cap the fragment list at 10 entries per query to keep long names covered without exploding work
 
 ### 3. Configurable Word Combination Size
 
 - The query fragmentation logic in `candidateFragments` generates word combinations from the input query to improve search accuracy for multi-word place names.
-- The size of these combinations is configurable via the `WithWordComboSize` option when creating a `Matcher`.
-- The default size is 3, which provides a good balance between accuracy and performance.
-- A size of 2 can be used for better performance, but an evaluation has shown that this may cause the search to miss important fragments for complex queries (e.g., "Kota Administrasi Jakarta Selatan").
+- The size of these combinations is configurable via the `WithWordComboSize` option when creating a `Matcher` or by setting the `MATCHER_WORD_COMBO_SIZE` environment variable.
+- The default size is 3, which provides a good balance between accuracy and performance and now ships with regression tests for long district names.
+- Smaller sizes reduce work but risk missing essential fragments for complex queries (e.g., "Kota Administrasi Jakarta Selatan").
 - This configurability allows for a trade-off between performance and search quality based on specific needs.
+
+### 4. Suggestion Confidence Guard
+
+- The matcher requires a combined score of at least 0.8 before auto-filling filters, matching the `MATCHER_MIN_SCORE` default.
+- Per-level similarity thresholds were tightened (province 0.4, city 0.5, district 0.58, subdistrict 0.45) and are enforced before suggestion data is applied to requests.
+- Detailed debug logs capture the strategy, combined score, and per-level similarities for each suggestion to aid calibration.
 
 ### 4. Precomputed Values
 - Precomputed allgrams values to avoid repeated calculations
@@ -29,6 +35,7 @@ We've implemented several key optimizations to reduce the API latency from over 
 ### 5. Memory Optimizations
 - Added synchronization primitives to prevent race conditions
 - Optimized data structures for better memory usage
+- Bounded the n-gram search results to a configurable top-K (default 50) and bypass cache writes for truncated queries to keep memory predictable
 
 ### 6. Timeout Mechanism
 

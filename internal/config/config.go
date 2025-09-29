@@ -83,6 +83,7 @@ type MatcherConfig struct {
 	LevelWeights     map[regionhierarchy.Level]float64
 	MinCombinedScore float64
 	CacheSize        int
+	WordComboSize    int
 }
 
 // applyMatcherDefaults sets sensible defaults on the provided MatcherConfig when fields are zero-valued.
@@ -99,8 +100,8 @@ type MatcherConfig struct {
 func applyMatcherDefaults(cfg *MatcherConfig) {
 	defaultThresholds := map[regionhierarchy.Level]float64{
 		regionhierarchy.LevelProvince:    0.4,
-		regionhierarchy.LevelCity:        0.4,
-		regionhierarchy.LevelDistrict:    0.45,
+		regionhierarchy.LevelCity:        0.5,
+		regionhierarchy.LevelDistrict:    0.58,
 		regionhierarchy.LevelSubdistrict: 0.45,
 	}
 	defaultWeights := map[regionhierarchy.Level]float64{
@@ -141,10 +142,13 @@ func applyMatcherDefaults(cfg *MatcherConfig) {
 	}
 
 	if cfg.MinCombinedScore <= 0 {
-		cfg.MinCombinedScore = 0.6
+		cfg.MinCombinedScore = 0.8
 	}
 	if cfg.CacheSize <= 0 {
 		cfg.CacheSize = 1000
+	}
+	if cfg.WordComboSize <= 0 {
+		cfg.WordComboSize = 3
 	}
 }
 
@@ -303,7 +307,7 @@ func BootstrapHTTP(ctx context.Context, opts Options) (HTTPBootstrap, error) {
 			regionmatcher.WithSuggestionTimeout(opts.Matcher.Timeout),
 			regionmatcher.WithMinCombinedScore(opts.Matcher.MinCombinedScore),
 			regionmatcher.WithCacheSize(opts.Matcher.CacheSize),
-			regionmatcher.WithWordComboSize(2),
+			regionmatcher.WithWordComboSize(opts.Matcher.WordComboSize),
 			regionmatcher.WithNGramSize(3),
 		}
 		if len(weights) > 0 {

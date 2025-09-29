@@ -205,6 +205,39 @@ func TestSimilarityWarp(t *testing.T) {
 	}
 }
 
+func TestSearchRespectsMaxResults(t *testing.T) {
+	items := []string{"alpha", "alpine", "alps", "albatross"}
+	ng, err := New(items, WithN[string](1), WithMaxResults[string](2))
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	results := ng.Search("al")
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if results[0].Similarity < results[1].Similarity {
+		t.Fatalf("expected results to be sorted by similarity desc: %+v", results)
+	}
+}
+
+func TestShortQueriesBypassCache(t *testing.T) {
+	ng, err := New([]string{"bandung"})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	if len(ng.cache) != 0 {
+		t.Fatalf("expected cache to be empty initially")
+	}
+
+	ng.Search("ba")
+
+	if len(ng.cache) != 0 {
+		t.Fatalf("expected short query to bypass cache, got %+v", ng.cache)
+	}
+}
+
 func almostEqual(a, b float64) bool {
 	return math.Abs(a-b) < 1e-9
 }

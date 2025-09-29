@@ -149,3 +149,25 @@ func TestEvaluateCombinationBonusAndCap(t *testing.T) {
 		}
 	})
 }
+
+func TestRunPercolatorPrefersProvinceAlignedDistrict(t *testing.T) {
+	levelMatches := map[Level][]Match{
+		LevelProvince: {
+			{Level: LevelProvince, Name: "Aceh Barat", RegionID: "11.05", Similarity: 0.9},
+		},
+		LevelDistrict: {
+			{Level: LevelDistrict, Name: "Meureubo", RegionID: "11.05.04", Province: "Aceh Barat", Similarity: 0.86, Fragment: "aceh barat meureubo"},
+			{Level: LevelDistrict, Name: "Meureubo", RegionID: "11.13.04", Province: "Aceh Barat Daya", Similarity: 0.86, Fragment: "meureubo"},
+		},
+	}
+
+	weights := map[Level]float64{LevelProvince: 0.3, LevelDistrict: 0.7}
+
+	suggestion, ok := runPercolator(levelMatches, weights, 0.5, 0.01, 0.03)
+	if !ok {
+		t.Fatalf("expected percolator to return suggestion")
+	}
+	if suggestion.District == nil || suggestion.District.RegionID != "11.05.04" {
+		t.Fatalf("expected province-aligned district to win tie-break, got %+v", suggestion.District)
+	}
+}

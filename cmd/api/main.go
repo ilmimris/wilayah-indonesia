@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/ilmimris/wilayah-indonesia/internal/config"
@@ -41,16 +42,58 @@ func main() {
 		ReadOnly: true,
 		Matcher: config.MatcherConfig{
 			SnapshotPath:     matcherSnapshotPath,
-			MinCombinedScore: 0.5,
+			MinCombinedScore: 0.8,
 			Timeout:          250 * time.Millisecond,
 			LevelThresholds: map[regionhierarchy.Level]float64{
-				regionhierarchy.LevelProvince:    0.3,  // 0.5
-				regionhierarchy.LevelCity:        0.35, // 0.5
-				regionhierarchy.LevelDistrict:    0.35, // 0.5
-				regionhierarchy.LevelSubdistrict: 0.3,  // 0.4
+				regionhierarchy.LevelProvince:    0.4,
+				regionhierarchy.LevelCity:        0.5,
+				regionhierarchy.LevelDistrict:    0.58,
+				regionhierarchy.LevelSubdistrict: 0.45,
 			},
-			ParallelTopK: 50,
+			WordComboSize: 3,
+			ParallelTopK:  50,
 		},
+	}
+
+	if value := os.Getenv("MATCHER_MIN_SCORE"); value != "" {
+		if parsed, err := strconv.ParseFloat(value, 64); err != nil || parsed <= 0 || parsed > 1 {
+			slog.Warn("invalid MATCHER_MIN_SCORE override, using default", "value", value, "error", err)
+		} else {
+			opts.Matcher.MinCombinedScore = parsed
+		}
+	}
+
+	thresholdEnv := map[regionhierarchy.Level]string{
+		regionhierarchy.LevelProvince:    "MATCHER_THRESHOLD_PROVINCE",
+		regionhierarchy.LevelCity:        "MATCHER_THRESHOLD_CITY",
+		regionhierarchy.LevelDistrict:    "MATCHER_THRESHOLD_DISTRICT",
+		regionhierarchy.LevelSubdistrict: "MATCHER_THRESHOLD_SUBDISTRICT",
+	}
+	for level, envName := range thresholdEnv {
+		if value := os.Getenv(envName); value != "" {
+			parsed, err := strconv.ParseFloat(value, 64)
+			if err != nil || parsed < 0 || parsed > 1 {
+				slog.Warn("invalid matcher threshold override", "env", envName, "value", value, "error", err)
+				continue
+			}
+			opts.Matcher.LevelThresholds[level] = parsed
+		}
+	}
+
+	if value := os.Getenv("MATCHER_WORD_COMBO_SIZE"); value != "" {
+		if parsed, err := strconv.Atoi(value); err != nil || parsed <= 0 {
+			slog.Warn("invalid MATCHER_WORD_COMBO_SIZE override", "value", value, "error", err)
+		} else {
+			opts.Matcher.WordComboSize = parsed
+		}
+	}
+
+	if value := os.Getenv("MATCHER_PARALLEL_TOP_K"); value != "" {
+		if parsed, err := strconv.Atoi(value); err != nil || parsed <= 0 {
+			slog.Warn("invalid MATCHER_PARALLEL_TOP_K override", "value", value, "error", err)
+		} else {
+			opts.Matcher.ParallelTopK = parsed
+		}
 	}
 
 	bootstrap, err := config.BootstrapHTTP(ctx, opts)
